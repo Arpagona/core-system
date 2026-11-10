@@ -20,5 +20,4 @@ jobs:
           test -s docs/ARCHITECTURE.md
           test -s docs/INTERFACES.md
           git diff --check
-# Pas encore de workspace Rust : aucun résultat de test Rust revendiqué.
 # Pas de Guardian IA configuré, ni de déploiement automatique.

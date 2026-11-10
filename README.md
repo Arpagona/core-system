@@ -28,3 +28,7 @@ Le dépôt est privé. La publication open source n'est pas décidée. La licenc
 ## Limites actuelles
 
 Le propriétaire GitHub `Arpagona` est encore un compte personnel, pas une organisation. Les protections obligatoires de branche ne sont pas disponibles sur sa formule actuelle. Voir l'état détaillé avant de considérer l'atelier opérationnel.
+
+## Expérience Rust jetable
+
+Deux crates synthétiques sous `experiments/` vérifient un contrat ; aucun code produit. Voir [guide poste neuf](docs/GUIDE_ONBOARDING.md), [workflow](docs/WORKFLOW.md), [sécurité](docs/SECURITY.md) et [plan](docs/PLAN-P0-P1.md).
