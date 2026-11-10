@@ -24,4 +24,4 @@ Toute évolution commune doit expliciter consommateurs impactés, compatibilité
 
 ## EXP-001 — contrat synthétique proposé
 
-`atelier-demo` consomme `atelier-contrat` ; `etiquette(u32)` renvoie une chaîne. Le test `experiments/demo/tests/contrat.rs` vérifie des exemples. Ce contrat expérimental n'est ni un contrat produit ni une approbation collective.
+`atelier-demo` consomme `atelier-contrat` ; `etiquette(u32, &str)` renvoie une chaîne. Le test `experiments/demo/tests/contrat.rs` vérifie l'appel du consommateur et la transmission du préfixe. Le second paramètre a été ajouté dans la PR de démonstration pour exercer une rupture réelle : ce changement reste **proposé**, non approuvé, et exigerait l'accord des trois co-concepteurs ainsi qu'une revue des consommateurs avant toute intégration. Ce contrat expérimental n'est ni un contrat produit ni une approbation collective.
