@@ -1,7 +1,7 @@
 {
   "version": 1,
   "modules": [
-    {"name": "atelier-contrat", "path": "experiments/contrat", "responsibility": "Fournisseur synthétique du contrat expérimental", "dependencies": [], "contracts": ["EXP-001"]},
+    {"name": "atelier-contrat", "path": "experiments/contrat", "responsibility": "Fournisseur synthétique du contrat expérimental", "dependencies": ["atelier-demo"], "contracts": ["EXP-001"]},
     {"name": "atelier-demo", "path": "experiments/demo", "responsibility": "Consommateur synthétique et démonstrateur non productif", "dependencies": ["atelier-contrat"], "contracts": ["EXP-001"]}
   ],
   "contracts": [{"id": "EXP-001", "status": "proposé", "source": "docs/INTERFACES.md", "test": "experiments/demo/tests/contrat.rs"}]
