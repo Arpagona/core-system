@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - name: Toolchain exacte
         run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
       - run: cargo fmt --all -- --check
@@ -27,7 +29,7 @@ jobs:
           (cd demo-artifact && sha256sum atelier-demo > SHA256SUMS)
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: atelier-demo-${{ github.sha }}
+          name: atelier-demo-${{ github.event.pull_request.head.sha || github.sha }}
           path: demo-artifact/
           if-no-files-found: error
           retention-days: 7
