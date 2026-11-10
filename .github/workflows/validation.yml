@@ -20,4 +20,4 @@ jobs:
           test -s docs/ARCHITECTURE.md
           test -s docs/INTERFACES.md
           git diff --check
-# Pas de Guardian IA configuré, ni de déploiement automatique.
+# Aucun Guardian IA. Le contrôle déterministe est dans guardian-review.yml ; aucun déploiement automatique.
