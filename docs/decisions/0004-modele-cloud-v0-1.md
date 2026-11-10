@@ -1,7 +1,8 @@
 # ADR 0004 — Fournisseur de modèle de la v0.1
 
 **Date :** 10 novembre 2026
-**Statut :** décision de Thibaud, relecture de Maël et Stéphane encore requise
+**Statut :** principe (option A) décidé par Thibaud ; fournisseur, modèle et budget **non décidés** ; relecture de Maël et Stéphane encore requise
+**Correction du 10/11/2026 :** la version initiale présentait à tort `opencode-go` / `deepseek-v4.1-flash` comme route approuvée.
 **Référence :** `docs/PLAN-NOYAU.md`, section 5.3
 
 ## Contexte
@@ -18,12 +19,13 @@ Le noyau agentique sera installé sur une machine virtuelle du serveur Atlas. Le
 
 ## Décision
 
-Option **A**. Route `opencode-go` / `deepseek-v4.1-flash`, configurable (`base_url`, `model`, `api_key_env`). La clé provient d'une variable d'environnement, jamais du dépôt.
+Option **A** sur le principe : API cloud OpenAI-compatible, configurable (`base_url`, `model`, `api_key_env`). La clé provient d'une variable d'environnement, jamais du dépôt.
+
+**Non décidé :** fournisseur, modèle précis, plafond de dépenses global et par mission. `opencode-go` n'est qu'un candidat parmi d'autres.
 
 ## Justification
 
 - décision explicite de Thibaud le 10/11/2026 ;
-- route déjà utilisée et éprouvée par ARPAGONA ;
 - aucune exposition réseau supplémentaire sur le poste de travail ;
 - réversible : le noyau dépend d'un port `ModelPort`, pas d'un fournisseur.
 

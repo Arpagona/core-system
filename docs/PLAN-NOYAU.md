@@ -120,18 +120,18 @@ Consommation observée : disque de la VM 596 Mio utilisés sur 40 Gio. `local-lv
 
 L'adresse .240 a été choisie hors de la plage dynamique constatée (.55 attribué en DHCP) ; à confirmer avec la configuration du routeur.
 
-### 5.3 Accès au modèle — **décision prise le 10 novembre 2026**
+### 5.3 Accès au modèle — **principe validé le 10 novembre 2026, fournisseur non choisi**
 
-**Option A retenue par Thibaud : modèle cloud pour démarrer.**
+**Principe retenu par Thibaud : démarrer avec un modèle cloud (option A).** Le fournisseur, le modèle précis et le budget **ne sont pas validés** (correction du 10/11/2026 : une version antérieure de ce document présentait à tort `opencode-go` / `deepseek-v4.1-flash` comme approuvé).
 
 Le routeur local écoute sur `127.0.0.1:8080` (et vLLM sur `127.0.0.1:8022`) sur le poste de travail : une VM sur Atlas ne peut pas l'atteindre sans exposition réseau. Ce point est donc écarté pour la v0.1.
 
 | Élément | Valeur retenue |
 |---|---|
 | Type d'accès | API cloud **OpenAI-compatible** |
-| Route de départ | `opencode-go` / `deepseek-v4.1-flash` — route déjà utilisée et éprouvée par ARPAGONA |
+| Fournisseur et modèle | **à décider** — candidats à comparer (dont `opencode-go`), aucun choix approuvé |
 | Configuration | `base_url`, `model`, `api_key_env` dans `/etc/agentcore/config.toml` (`0600`), clé jamais dans Git |
-| Coût | budget par mission obligatoire : plafond d'appels et de tokens, arrêt propre au dépassement |
+| Coût | **plafond de dépenses à décider** ; budget par mission obligatoire : plafond d'appels et de tokens, arrêt propre au dépassement |
 | Réversibilité | `ModelPort` unique ; un adaptateur local pourra être ajouté sans toucher au noyau |
 
 Conséquences à assumer et à écrire dans l'ADR :
@@ -213,8 +213,8 @@ Aucun test de CI n'appelle un modèle payant. Les tests réels sont explicitemen
 
 | # | Question | État |
 |---|---|---|
-| 1 | Fournisseur de modèle pour M2 | **ACTÉ le 10/11/2026** par Thibaud : cloud OpenAI-compatible, `opencode-go` / `deepseek-v4.1-flash` ; local en option future (ADR 0004) |
-| 2 | Création de la VM sur Atlas | **en attente** — nécessaire à M5, pas avant |
+| 1 | Fournisseur de modèle pour M2 | **principe acté le 10/11/2026** par Thibaud : cloud OpenAI-compatible, local en option future (ADR 0004). **Fournisseur, modèle précis et plafond de dépenses : non décidés** |
+| 2 | Création de la VM sur Atlas | **réalisée le 10/11/2026** (VMID 100, `agentcore-dev`, 192.168.68.240) ; déploiement de test autorisé par Thibaud |
 | 3 | Runtime des outils sensibles | proposition : shell sur liste blanche, jamais de shell libre |
 | 4 | Niveau d'approbation humaine | proposition : toute écriture hors espace de travail + toute commande shell |
 | 5 | Cas d'usage de M6 | à choisir : dossier technique client, ou préparation de devis |
@@ -228,9 +228,9 @@ Aucun test de CI n'appelle un modèle payant. Les tests réels sont explicitemen
 
 **Options.** (A) API cloud OpenAI-compatible. (B) Exposer le routeur local sur le LAN. (C) Passerelle sur Atlas.
 
-**Décision.** Option A. Route `opencode-go` / `deepseek-v4.1-flash`, configurable, clé par variable d'environnement.
+**Décision.** Option A sur le principe. Adaptateur OpenAI-compatible configurable (`base_url`, `model`, `api_key_env`), clé par variable d'environnement. **Fournisseur, modèle et plafond de dépenses restent à décider.**
 
-**Justification.** Décision de Thibaud du 10/11/2026 ; pas de nouvelle surface d'attaque réseau ; route déjà éprouvée ; réversible par le port `ModelPort`.
+**Justification.** Décision de principe de Thibaud du 10/11/2026 ; pas de nouvelle surface d'attaque réseau ; réversible par le port `ModelPort`.
 
 **Conséquences.** Code des missions transmis à un tiers (aucune donnée client réelle en v0.1) ; coût et latence à mesurer par mission ; délais et retry bornés obligatoires ; adjonction ultérieure d'un adaptateur local sans modification du noyau.
 
@@ -239,9 +239,9 @@ Aucun test de CI n'appelle un modèle payant. Les tests réels sont explicitemen
 ## 12. Prochaine action
 
 1. **Thibaud** : valider ou corriger ce plan, puis l'ouvrir en PR dans l'atelier (`docs/PLAN-NOYAU.md`) après revue de la PR nº 1.
-2. **Modèle** : décidé — cloud OpenAI-compatible (section 5.3, ADR 0004). Rien à faire avant M2.
+2. **Modèle** : principe cloud OpenAI-compatible décidé (section 5.3, ADR 0004) ; **fournisseur, modèle et plafond de dépenses à décider avant M2**.
 3. **M0** démarre dès que les contrats C-01…C-07 sont acceptés à trois ; le reste du plan n'attend pas la VM.
-4. **VM Atlas** : autorisation encore requise, utile seulement à M5. Spécifications prêtes en section 5.2.
+4. **VM Atlas** : créée (section 5.2) ; installation de versions de test autorisée par Thibaud, sauvegarde et retour arrière obligatoires.
 
 ---
 
