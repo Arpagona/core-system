@@ -9,6 +9,18 @@ use agentcore_types::*;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+/// Écrit sur la sortie standard ; un tube fermé (`| head`) termine proprement au lieu de paniquer.
+macro_rules! out {
+    ($($t:tt)*) => {{
+        use std::io::Write;
+        if let Err(e) = writeln!(std::io::stdout(), $($t)*) {
+            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                std::process::exit(0);
+            }
+        }
+    }};
+}
+
 const USAGE: &str = "agentcore — ARPAGONA Agent Core v0.1 (préversion)
 
 USAGE
@@ -99,26 +111,26 @@ fn print_report(cfg: &Config, id: &MissionId) -> Result<MissionState, String> {
         dir.join("report.json"),
         serde_json::to_string_pretty(&r).unwrap_or_default(),
     );
-    println!("mission       : {id}");
-    println!("état          : {:?}", proj.state);
+    out!("mission       : {id}");
+    out!("état          : {:?}", proj.state);
     if let Some(reason) = &proj.reason {
-        println!("raison        : {reason:?}");
+        out!("raison        : {reason:?}");
     }
     if let Some(s) = &proj.summary {
-        println!("compte rendu  : {s}");
+        out!("compte rendu  : {s}");
     }
     if let Some(spec) = &proj.spec {
         let p = spec.workspace.join(&spec.deliverable.path);
-        println!(
+        out!(
             "livrable      : {} ({})",
             p.display(),
             if p.is_file() { "présent" } else { "absent" }
         );
     }
     if let Some(v) = r.get("verification").filter(|v| !v.is_null()) {
-        println!("vérification  : {v}");
+        out!("vérification  : {v}");
     }
-    println!(
+    out!(
         "consommation  : {} itérations, {} appels d'outil, {} tokens (entrée {}, sortie {}), coût estimé {:.4} $",
         proj.iterations,
         proj.tool_calls,
@@ -132,21 +144,21 @@ fn print_report(cfg: &Config, id: &MissionId) -> Result<MissionState, String> {
         .and_then(|d| d.as_array())
         .filter(|d| !d.is_empty())
     {
-        println!("refus         : {}", d.len());
+        out!("refus         : {}", d.len());
     }
     if !proj.uncertain.is_empty() {
         for u in &proj.uncertain {
-            println!(
+            out!(
                 "INCERTAIN     : appel {} ({}) commencé sans résultat → vérifier puis `agentcore mission resolve {id} --call {} --as done|not-done`",
                 u.call_id, u.tool, u.call_id
             );
         }
     }
     if truncated {
-        println!("journal       : dernière ligne tronquée ignorée");
+        out!("journal       : dernière ligne tronquée ignorée");
     }
-    println!("tentatives    : {}", proj.attempts);
-    println!("rapport       : {}", dir.join("report.json").display());
+    out!("tentatives    : {}", proj.attempts);
+    out!("rapport       : {}", dir.join("report.json").display());
     Ok(proj.state)
 }
 
@@ -195,14 +207,14 @@ fn code(state: MissionState) -> ExitCode {
 fn main() -> ExitCode {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args.iter().any(|a| a == "-h" || a == "--help") {
-        println!("{USAGE}");
+        out!("{USAGE}");
         return ExitCode::SUCCESS;
     }
     let config_path = take(&mut args, "--config");
     if args.first().map(String::as_str) == Some("version") {
-        println!("agentcore {VERSION}+{COMMIT}");
+        out!("agentcore {VERSION}+{COMMIT}");
         if let Ok((cfg, path)) = load_config(config_path) {
-            println!(
+            out!(
                 "configuration : {path}\nétat : {}\nplafonds : {:.2} $ / mission, {:.2} $ / 24 h\nmodèle : {} @ {}\nclé : variable {} ou fichier dédié ({})",
                 cfg.state_dir.display(),
                 cfg.limits.max_cost_microusd as f64 / 1e6,
@@ -310,7 +322,7 @@ fn main() -> ExitCode {
             match journal::load(&journal::mission_dir(&cfg.state_dir, &id)) {
                 Ok((events, _, _)) => {
                     for e in events {
-                        println!(
+                        out!(
                             "[{:>3}] {} {}",
                             e.seq,
                             e.at_ms,
@@ -334,14 +346,14 @@ fn main() -> ExitCode {
             ids.sort();
             for id in ids {
                 match journal::load(&dir.join(&id)) {
-                    Ok((_, p, _)) => println!(
+                    Ok((_, p, _)) => out!(
                         "{id}  {:<10}  {}",
                         format!("{:?}", p.state),
                         p.spec
                             .map(|s| s.goal.chars().take(60).collect::<String>())
                             .unwrap_or_default()
                     ),
-                    Err(e) => println!("{id}  ILLISIBLE  {e}"),
+                    Err(e) => out!("{id}  ILLISIBLE  {e}"),
                 }
             }
             ExitCode::SUCCESS
@@ -380,7 +392,7 @@ fn main() -> ExitCode {
             }) {
                 return fail(e);
             }
-            println!("résolution enregistrée ; reprendre avec : agentcore mission resume {id}");
+            out!("résolution enregistrée ; reprendre avec : agentcore mission resume {id}");
             ExitCode::SUCCESS
         }
         "cancel" => {
@@ -403,14 +415,14 @@ fn main() -> ExitCode {
                     }) {
                         return fail(e);
                     }
-                    println!("mission {id} annulée");
+                    out!("mission {id} annulée");
                     ExitCode::from(4)
                 }
                 Err(journal::StoreError::Locked) => {
                     let f = journal::mission_dir(&cfg.state_dir, &id).join("cancel.request");
                     match std::fs::write(&f, b"cancel\n") {
                         Ok(()) => {
-                            println!("mission en cours : demande d'annulation déposée, prise en compte avant l'étape suivante");
+                            out!("mission en cours : demande d'annulation déposée, prise en compte avant l'étape suivante");
                             ExitCode::SUCCESS
                         }
                         Err(e) => fail(e),

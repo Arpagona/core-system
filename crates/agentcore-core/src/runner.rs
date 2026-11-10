@@ -202,6 +202,23 @@ fn pending_calls(events: &[Event]) -> Vec<ToolCall> {
 }
 
 impl Runner<'_> {
+    /// Estimation majorée du coût du prochain appel modèle (micro-dollars).
+    pub fn worst_case_next_cost(&self, events: &[Event]) -> u64 {
+        let last_input = events
+            .iter()
+            .rev()
+            .find_map(|e| match &e.kind {
+                EventKind::ModelReplied { usage, .. } => {
+                    Some(usage.input_tokens + usage.output_tokens)
+                }
+                _ => None,
+            })
+            .unwrap_or(2_000);
+        let input = last_input * 3 / 2;
+        input * self.cfg.price_input_per_mtok / 1_000_000
+            + self.cfg.max_output_tokens as u64 * self.cfg.price_output_per_mtok / 1_000_000
+    }
+
     fn end(
         &self,
         j: &mut Journal,
@@ -371,11 +388,14 @@ impl Runner<'_> {
             if p.usage.total() >= lim.max_total_tokens {
                 return self.limit(j, LimitKind::Tokens);
             }
-            if p.cost_microusd >= lim.max_cost_microusd {
+            // Plafond strict : coût engagé + pire cas de l'appel suivant (entrée = dernière
+            // entrée connue + 50 %, sortie = max_output_tokens) doit rester sous la limite.
+            let worst_next = self.worst_case_next_cost(&j.events);
+            if p.cost_microusd + worst_next > lim.max_cost_microusd {
                 return self.limit(j, LimitKind::Cost);
             }
             if let Some(daily) = self.cfg.daily_remaining_microusd {
-                if p.cost_microusd.saturating_sub(cost_at_start) >= daily {
+                if p.cost_microusd.saturating_sub(cost_at_start) + worst_next > daily {
                     return self.end(
                         j,
                         MissionState::Failed,

@@ -173,6 +173,9 @@ pub fn create_mission(
         if !c.is_dir() {
             return Err(format!("{} n'est pas un dossier", c.display()));
         }
+        if let Err(e) = std::fs::read_dir(&c) {
+            return Err(format!("dossier d'entrée {} illisible : {e}", c.display()));
+        }
         input_dirs.push(c);
     }
     let missions = state_dir.join("missions");

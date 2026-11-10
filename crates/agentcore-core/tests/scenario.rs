@@ -358,13 +358,17 @@ fn limites_iterations_outils_tokens_cout_duree() {
     let mut j = mission(
         &e,
         Limits {
-            max_cost_microusd: 1500,
+            max_cost_microusd: 12_000,
             ..Limits::default()
         },
     );
+    // Plafond strict : avant chaque appel, coût engagé + pire cas (1,5 × dernière taille en entrée
+    // + 4096 tokens de sortie) ≤ plafond. Appel scripté = 1200 µ$ ; pire cas suivant = 9842 µ$.
+    // 1200 + 9842 ≤ 12000 → 2e appel ; 2400 + 9842 > 12000 → arrêt.
     let (_, calls) = run(&e, &mut j, happy_script(&e));
     assert_eq!(limit_reason(&j), Some(LimitKind::Cost));
-    assert_eq!(calls, 2, "arrêt avant l'appel suivant");
+    assert_eq!(calls, 2, "arrêt avant un appel qui pourrait dépasser");
+    assert!(j.projection().unwrap().cost_microusd <= 12_000);
 
     let mut j = mission(
         &e,
@@ -505,7 +509,7 @@ fn plafond_quotidien_arrete_la_mission() {
     let cfg = RunConfig {
         price_input_per_mtok: 1_000_000,
         price_output_per_mtok: 2_000_000,
-        daily_remaining_microusd: Some(1500),
+        daily_remaining_microusd: Some(12_000),
         ..RunConfig::default()
     };
     let runner = Runner {

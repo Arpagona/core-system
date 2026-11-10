@@ -16,6 +16,7 @@ REL="/opt/agentcore/releases/$VERSION"
 install -d -m 0755 "$REL"
 install -m 0755 "$HERE/agentcore" "$REL/agentcore"
 install -m 0644 "$HERE/VERSION" "$HERE/SHA256SUMS" "$REL/"
+install -m 0755 "$HERE/install.sh" "$HERE/rollback.sh" "$HERE/recette.sh" "$REL/"
 rm -rf "$REL/demo" && cp -r "$HERE/demo" "$REL/demo" && chmod -R a+rX "$REL/demo"
 ln -sfn "$REL" /opt/agentcore/current.new && mv -T /opt/agentcore/current.new /opt/agentcore/current
 ln -sfn /opt/agentcore/current/agentcore /usr/local/bin/agentcore
