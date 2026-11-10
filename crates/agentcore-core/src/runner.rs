@@ -1,6 +1,6 @@
 //! Boucle de mission : modèle → politique → outil → journal → … → vérification du livrable.
 
-use crate::journal::{now_ms, Journal, StoreError};
+use crate::journal::{Journal, StoreError};
 use crate::verify::verify_deliverable;
 use agentcore_types::*;
 use serde_json::json;
@@ -13,6 +13,8 @@ pub struct RunConfig {
     pub price_output_per_mtok: u64,
     pub max_output_tokens: u32,
     pub retry_delays: Vec<Duration>,
+    /// Budget restant sur 24 h glissantes, toutes missions confondues (micro-dollars).
+    pub daily_remaining_microusd: Option<u64>,
 }
 
 impl Default for RunConfig {
@@ -22,6 +24,7 @@ impl Default for RunConfig {
             price_output_per_mtok: 0,
             max_output_tokens: 4096,
             retry_delays: vec![Duration::from_secs(2), Duration::from_secs(5)],
+            daily_remaining_microusd: None,
         }
     }
 }
@@ -248,6 +251,7 @@ impl Runner<'_> {
             attempt: p.attempts + 1,
         })?;
         let started = Instant::now();
+        let cost_at_start = p.cost_microusd;
         let ctx = ToolContext {
             input_dirs: spec.input_dirs.clone(),
             workspace: spec.workspace.clone(),
@@ -370,6 +374,18 @@ impl Runner<'_> {
             if p.cost_microusd >= lim.max_cost_microusd {
                 return self.limit(j, LimitKind::Cost);
             }
+            if let Some(daily) = self.cfg.daily_remaining_microusd {
+                if p.cost_microusd.saturating_sub(cost_at_start) >= daily {
+                    return self.end(
+                        j,
+                        MissionState::Failed,
+                        Some(FailureReason::LimitExceeded {
+                            limit: LimitKind::Cost,
+                        }),
+                        Some("plafond quotidien de dépenses atteint".into()),
+                    );
+                }
+            }
             // 3. Appel modèle avec nouvelles tentatives bornées.
             let iteration = p.iterations + 1;
             let req = ModelRequest {
@@ -433,7 +449,6 @@ impl Runner<'_> {
                     }
                 }
             }
-            let _ = now_ms();
         }
     }
 }

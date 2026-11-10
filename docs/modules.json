@@ -35,6 +35,33 @@
         "C-06",
         "C-07"
       ]
+    },
+    {
+      "name": "agentcore-core",
+      "path": "crates/agentcore-core",
+      "responsibility": "Noyau v0.1 : boucle, politique, journal, outils, adaptateur modèle (préversion)",
+      "dependencies": [
+        "agentcore-types"
+      ],
+      "contracts": [
+        "C-02",
+        "C-03",
+        "C-04",
+        "C-05",
+        "C-06"
+      ]
+    },
+    {
+      "name": "agentcore",
+      "path": "crates/agentcore",
+      "responsibility": "CLI v0.1 (préversion)",
+      "dependencies": [
+        "agentcore-core",
+        "agentcore-types"
+      ],
+      "contracts": [
+        "C-07"
+      ]
     }
   ],
   "contracts": [

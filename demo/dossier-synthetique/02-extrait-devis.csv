@@ -1,0 +1,6 @@
+reference,date,matiere,quantite,delai_jours,montant_ht_eur
+DV-2026-101,2026-09-02,aluminium 6082,50,12,4200
+DV-2026-114,2026-09-15,inox 316L,20,18,6900
+DV-2026-120,2026-09-29,aluminium 6082,200,15,11800
+DV-2026-131,2026-10-08,acier S235,500,21,9400
+DV-2026-140,2026-10-21,inox 316L,30,20,8100

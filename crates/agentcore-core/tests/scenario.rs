@@ -121,7 +121,7 @@ fn mission(e: &Env, limits: Limits) -> Journal {
     create_mission(
         &e.state,
         "Synthétise le dossier",
-        &[e.input.clone()],
+        std::slice::from_ref(&e.input),
         "synthese.md",
         limits,
     )
@@ -481,7 +481,7 @@ fn entrees_recouvrant_l_etat_refusees() {
     let r = create_mission(
         &e.state,
         "x",
-        &[e.state.clone()],
+        std::slice::from_ref(&e.state),
         "synthese.md",
         Limits::default(),
     );
@@ -489,10 +489,37 @@ fn entrees_recouvrant_l_etat_refusees() {
     let r = create_mission(
         &e.state,
         "x",
-        &[e.input.clone()],
+        std::slice::from_ref(&e.input),
         "../x.md",
         Limits::default(),
     );
     assert!(r.is_err());
     let _ = Path::new("/");
+}
+
+#[test]
+fn plafond_quotidien_arrete_la_mission() {
+    let e = env();
+    let mut j = mission(&e, Limits::default());
+    let model = ScriptedModel::new(happy_script(&e));
+    let cfg = RunConfig {
+        price_input_per_mtok: 1_000_000,
+        price_output_per_mtok: 2_000_000,
+        daily_remaining_microusd: Some(1500),
+        ..RunConfig::default()
+    };
+    let runner = Runner {
+        model: &model,
+        policy: &DefaultPolicy,
+        tools: tools::registry(),
+        cfg: &cfg,
+    };
+    let out = runner.run(&mut j).unwrap();
+    assert_eq!(out.state, MissionState::Failed);
+    assert_eq!(*model.calls.lock().unwrap(), 2);
+    assert_eq!(
+        j.projection().unwrap().summary.as_deref(),
+        Some("plafond quotidien de dépenses atteint")
+    );
+    assert_eq!(agentcore_core::spent_since(&e.state, 0), 2400);
 }

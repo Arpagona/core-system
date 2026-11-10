@@ -25,10 +25,16 @@ pub struct Config {
     pub base_url: String,
     pub model: String,
     pub api_key_env: String,
+    /// Nom d'un en-tête d'affinité envoyé avec l'identifiant de mission (vide = aucun).
+    pub session_header: String,
+    /// Fichier contenant la clé (une ligne), utilisé si la variable `api_key_env` est absente.
+    pub api_key_file: String,
     pub price_input_per_mtok_microusd: u64,
     pub price_output_per_mtok_microusd: u64,
     pub request_timeout_s: u64,
     pub max_output_tokens: u32,
+    /// Plafond de dépenses estimées sur 24 h glissantes, toutes missions (micro-dollars).
+    pub max_daily_cost_microusd: u64,
     pub limits: Limits,
 }
 
@@ -39,10 +45,13 @@ impl Default for Config {
             base_url: String::new(),
             model: String::new(),
             api_key_env: "AGENTCORE_API_KEY".into(),
+            session_header: String::new(),
+            api_key_file: String::new(),
             price_input_per_mtok_microusd: 0,
             price_output_per_mtok_microusd: 0,
             request_timeout_s: 120,
             max_output_tokens: 4096,
+            max_daily_cost_microusd: 20_000_000,
             limits: Limits::default(),
         }
     }
@@ -87,10 +96,17 @@ impl Config {
         if let Some(v) = kv.get("api_key_env") {
             c.api_key_env = v.clone();
         }
+        if let Some(v) = kv.get("api_key_file") {
+            c.api_key_file = v.clone();
+        }
+        if let Some(v) = kv.get("session_header") {
+            c.session_header = v.clone();
+        }
         c.price_input_per_mtok_microusd = num("price_input_per_mtok_microusd", 0)?;
         c.price_output_per_mtok_microusd = num("price_output_per_mtok_microusd", 0)?;
         c.request_timeout_s = num("request_timeout_s", 120)?;
         c.max_output_tokens = num("max_output_tokens", 4096)? as u32;
+        c.max_daily_cost_microusd = num("max_daily_cost_microusd", 20_000_000)?;
         let d = Limits::default();
         c.limits = Limits {
             max_iterations: num("max_iterations", d.max_iterations as u64)? as u32,
@@ -305,4 +321,27 @@ pub fn describe(k: &EventKind) -> String {
                 .unwrap_or_default()
         ),
     }
+}
+
+/// Coût estimé dépensé depuis `since_ms`, toutes missions confondues (journaux lisibles uniquement).
+pub fn spent_since(state_dir: &Path, since_ms: u64) -> u64 {
+    let Ok(rd) = std::fs::read_dir(state_dir.join("missions")) else {
+        return 0;
+    };
+    let mut total = 0;
+    for e in rd.flatten() {
+        let Ok(text) = std::fs::read_to_string(e.path().join("journal.jsonl")) else {
+            continue;
+        };
+        for line in text.lines() {
+            if let Ok(ev) = serde_json::from_str::<Event>(line) {
+                if let EventKind::ModelReplied { cost_microusd, .. } = ev.kind {
+                    if ev.at_ms >= since_ms {
+                        total += cost_microusd;
+                    }
+                }
+            }
+        }
+    }
+    total
 }

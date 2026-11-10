@@ -7,10 +7,57 @@ import tomllib
 from pathlib import Path
 
 lock = tomllib.loads(Path("Cargo.lock").read_text())
-# Liste PROPOSÉE en M0 (docs/contrats/M0-CONTRATS.md §11), non approuvée à trois.
+# Liste PROPOSÉE en M0 (docs/contrats/M0-CONTRATS.md §11) + client HTTPS ureq/rustls (spike v0.1).
+# Non approuvée à trois. windows-* : dépendances de plateforme verrouillées, non compilées sous Linux.
 # Toute entrée ajoutée ici est un changement de règle de contrôle.
-REVIEWED = {"serde", "serde_core", "serde_derive", "serde_json", "proc-macro2", "quote", "syn",
-            "unicode-ident", "itoa", "memchr", "ryu", "zmij"}
+REVIEWED = {
+    "base64",
+    "bytes",
+    "cc",
+    "cfg-if",
+    "find-msvc-tools",
+    "getrandom",
+    "http",
+    "httparse",
+    "itoa",
+    "libc",
+    "log",
+    "memchr",
+    "once_cell",
+    "percent-encoding",
+    "proc-macro2",
+    "quote",
+    "ring",
+    "rustls",
+    "rustls-pki-types",
+    "rustls-webpki",
+    "serde",
+    "serde_core",
+    "serde_derive",
+    "serde_json",
+    "shlex",
+    "subtle",
+    "syn",
+    "unicode-ident",
+    "untrusted",
+    "ureq",
+    "ureq-proto",
+    "utf8-zero",
+    "wasi",
+    "webpki-roots",
+    "windows-sys",
+    "windows-targets",
+    "windows_aarch64_gnullvm",
+    "windows_aarch64_msvc",
+    "windows_i686_gnu",
+    "windows_i686_gnullvm",
+    "windows_i686_msvc",
+    "windows_x86_64_gnu",
+    "windows_x86_64_gnullvm",
+    "windows_x86_64_msvc",
+    "zeroize",
+    "zmij",
+}
 external = [p["name"] for p in lock.get("package", []) if "source" in p and p["name"] not in REVIEWED]
 if external:
     sys.exit("Dépendances externes non examinées: " + ", ".join(sorted(set(external))))

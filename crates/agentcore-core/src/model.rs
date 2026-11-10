@@ -14,10 +14,18 @@ pub struct OpenAiCompatible {
     pub model: String,
     api_key: String,
     agent: ureq::Agent,
+    /// En-tête d'affinité de conversation (nom, valeur), ex. `x-opencode-session`.
+    session: Option<(String, String)>,
 }
 
 impl OpenAiCompatible {
-    pub fn new(base_url: &str, model: &str, api_key: String, timeout_s: u64) -> Self {
+    pub fn new(
+        base_url: &str,
+        model: &str,
+        api_key: String,
+        timeout_s: u64,
+        session: Option<(String, String)>,
+    ) -> Self {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(timeout_s)))
             .http_status_as_error(false)
@@ -28,6 +36,7 @@ impl OpenAiCompatible {
             model: model.to_string(),
             api_key,
             agent,
+            session,
         }
     }
 }
@@ -134,12 +143,19 @@ impl ModelPort for OpenAiCompatible {
             "max_tokens": req.max_output_tokens,
         });
         let url = format!("{}/chat/completions", self.base_url);
-        let resp = self
+        let mut post = self
             .agent
             .post(&url)
             .header("Authorization", &format!("Bearer {}", self.api_key))
             .header("Content-Type", "application/json")
-            .send(body.to_string().as_bytes());
+            .header(
+                "User-Agent",
+                concat!("arpagona-agentcore/", env!("CARGO_PKG_VERSION")),
+            );
+        if let Some((name, value)) = &self.session {
+            post = post.header(name.as_str(), value.as_str());
+        }
+        let resp = post.send(body.to_string().as_bytes());
         let mut resp = match resp {
             Ok(r) => r,
             Err(ureq::Error::Timeout(_)) => return Err(ModelError::Timeout),

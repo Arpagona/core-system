@@ -55,22 +55,39 @@ fn load_config(path: Option<String>) -> Result<(Config, String), String> {
     Ok((Config::parse(&text)?, path))
 }
 
-fn model_of(cfg: &Config) -> Result<OpenAiCompatible, String> {
+/// Clé : variable d'environnement, sinon fichier dédié. Jamais affichée ni journalisée.
+fn api_key(cfg: &Config) -> Option<String> {
+    std::env::var(&cfg.api_key_env)
+        .ok()
+        .map(|k| k.trim().to_string())
+        .filter(|k| !k.is_empty())
+        .or_else(|| {
+            if cfg.api_key_file.is_empty() {
+                return None;
+            }
+            std::fs::read_to_string(&cfg.api_key_file)
+                .ok()
+                .map(|k| k.trim().to_string())
+                .filter(|k| !k.is_empty())
+        })
+}
+
+fn model_of(cfg: &Config, mission: Option<&MissionId>) -> Result<OpenAiCompatible, String> {
     if cfg.base_url.is_empty() || cfg.model.is_empty() {
         return Err("base_url et model doivent être configurés".into());
     }
-    let key = std::env::var(&cfg.api_key_env)
-        .ok()
-        .filter(|k| !k.trim().is_empty())
-        .ok_or(format!(
-            "clé absente : variable d'environnement {} vide ou non définie",
-            cfg.api_key_env
-        ))?;
+    let key = api_key(cfg).ok_or(format!(
+        "clé absente : variable {} non définie et fichier « {} » illisible ou vide",
+        cfg.api_key_env, cfg.api_key_file
+    ))?;
     Ok(OpenAiCompatible::new(
         &cfg.base_url,
         &cfg.model,
         key,
         cfg.request_timeout_s,
+        mission
+            .filter(|_| !cfg.session_header.is_empty())
+            .map(|id| (cfg.session_header.clone(), format!("agentcore-{id}"))),
     ))
 }
 
@@ -133,12 +150,28 @@ fn print_report(cfg: &Config, id: &MissionId) -> Result<MissionState, String> {
     Ok(proj.state)
 }
 
+fn daily_remaining(cfg: &Config) -> Result<u64, String> {
+    let since = agentcore_core::journal::now_ms().saturating_sub(24 * 3600 * 1000);
+    let spent = agentcore_core::spent_since(&cfg.state_dir, since);
+    if spent >= cfg.max_daily_cost_microusd {
+        return Err(format!(
+            "plafond quotidien atteint : {:.4} $ dépensés sur 24 h pour {:.2} $ autorisés",
+            spent as f64 / 1e6,
+            cfg.max_daily_cost_microusd as f64 / 1e6
+        ));
+    }
+    Ok(cfg.max_daily_cost_microusd - spent)
+}
+
 fn execute(cfg: &Config, j: &mut Journal) -> Result<MissionState, String> {
-    let model = model_of(cfg)?;
+    let id = j.projection().ok().and_then(|p| p.spec).map(|s| s.id);
+    let model = model_of(cfg, id.as_ref())?;
+    let remaining = daily_remaining(cfg)?;
     let run_cfg = RunConfig {
         price_input_per_mtok: cfg.price_input_per_mtok_microusd,
         price_output_per_mtok: cfg.price_output_per_mtok_microusd,
         max_output_tokens: cfg.max_output_tokens,
+        daily_remaining_microusd: Some(remaining),
         ..RunConfig::default()
     };
     let runner = Runner {
@@ -170,18 +203,17 @@ fn main() -> ExitCode {
         println!("agentcore {VERSION}+{COMMIT}");
         if let Ok((cfg, path)) = load_config(config_path) {
             println!(
-                "configuration : {path}\nétat : {}\nmodèle : {} @ {}\nclé : variable {} ({})",
+                "configuration : {path}\nétat : {}\nplafonds : {:.2} $ / mission, {:.2} $ / 24 h\nmodèle : {} @ {}\nclé : variable {} ou fichier dédié ({})",
                 cfg.state_dir.display(),
+                cfg.limits.max_cost_microusd as f64 / 1e6,
+                cfg.max_daily_cost_microusd as f64 / 1e6,
                 cfg.model,
                 cfg.base_url,
                 cfg.api_key_env,
-                if std::env::var(&cfg.api_key_env)
-                    .map(|k| !k.is_empty())
-                    .unwrap_or(false)
-                {
-                    "définie"
+                if api_key(&cfg).is_some() {
+                    "disponible"
                 } else {
-                    "non définie"
+                    "INDISPONIBLE"
                 }
             );
         }
@@ -211,8 +243,11 @@ fn main() -> ExitCode {
             if !rest.is_empty() {
                 return fail(format!("arguments inattendus : {rest:?}"));
             }
-            // Vérifier la configuration du modèle AVANT de créer la mission.
-            if let Err(e) = model_of(&cfg) {
+            // Vérifier configuration et budget quotidien AVANT de créer la mission.
+            if let Err(e) = model_of(&cfg, None)
+                .map(|_| ())
+                .and_then(|_| daily_remaining(&cfg).map(|_| ()))
+            {
                 return fail(e);
             }
             let mut j = match agentcore_core::create_mission(
