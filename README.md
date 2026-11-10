@@ -13,6 +13,9 @@ Socle agentique réutilisable en Rust, organisé par responsabilités fonctionne
 - [Consignes aux agents](AGENTS.md)
 - [Guardian](docs/GUARDIAN.md)
 - [État réel de l'atelier et expérience initiale](docs/ATELIER-STATUS.md)
+- [Rapport de recette et garanties réelles](docs/RAPPORT_RECETTE.md)
+- [Guide nouveau poste](docs/GUIDE_ONBOARDING.md) et [guide nouvelle tâche](docs/GUIDE_NOUVELLE_TACHE.md)
+- [Procédure de test et de retour arrière](docs/DEPLOY_TEST.md) — préparation, non exécutée
 - [Décisions](docs/decisions/)
 
 ## État
@@ -31,4 +34,4 @@ Le propriétaire GitHub `Arpagona` est encore un compte personnel, pas une organ
 
 ## Expérience Rust jetable
 
-Deux crates synthétiques sous `experiments/` vérifient un contrat ; aucun code produit. Voir [guide poste neuf](docs/GUIDE_ONBOARDING.md), [workflow](docs/WORKFLOW.md), [sécurité](docs/SECURITY.md) et [plan](docs/PLAN-P0-P1.md).
+Deux crates synthétiques sous `experiments/` vérifient un contrat ; aucun code produit. Voir [guide poste neuf](docs/GUIDE_ONBOARDING.md), [guide nouvelle tâche](docs/GUIDE_NOUVELLE_TACHE.md), [workflow](docs/WORKFLOW.md), [sécurité](docs/SECURITY.md), [rapport de recette](docs/RAPPORT_RECETTE.md) et [plan](docs/PLAN-P0-P1.md).
