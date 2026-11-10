@@ -1,0 +1,12 @@
+[package]
+name = "agentcore-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Noyau v0.1 d'ARPAGONA Agent Core (préversion sur contrats M0 proposés)"
+publish = false
+
+[dependencies]
+agentcore-types = { path = "../agentcore-types" }
+serde_json = "1"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
