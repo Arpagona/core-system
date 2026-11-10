@@ -8,7 +8,7 @@ Vérification indépendante de l'état Git et de la PR #1 (`c8d764e…`, 4 check
 
 **FICHIERS / PR / URL**
 PR de démonstration, **non fusionnée** : https://github.com/Arpagona/core-system/pull/6
-PR du présent dossier : voir la PR liée à la branche `lot3/recette-dossier`.
+PR du présent dossier : https://github.com/Arpagona/core-system/pull/11 (branche `lot3/recette-dossier`, base `atelier/cadrage-v0-1`, non fusionnée).
 Issues : #7 (accès et organisation), #8 (protection de main et indépendance Guardian/CI), #9 (serveur de test), #10 (licence).
 Artefact : run 42868051788, archive `sha256:2d74dfcf83b6772eca60a3267879a1ee7cdf5c40e0001f3f227b463147dbfcb4`, binaire `503b86ab6c23242dd3e0c3b60556d95c298801c3aaa30a3ed6c4c3e6c538ca9f`.
 
