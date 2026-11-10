@@ -21,3 +21,7 @@ Aucune signature Rust publique n'est encore figée. Les noms ci-dessous exprimen
 - Un contexte client non autorisé est rejeté ; ce test logique ne prouve pas à lui seul l'isolation réseau ou stockage.
 
 Toute évolution commune doit expliciter consommateurs impactés, compatibilité, migration et accord des trois co-concepteurs.
+
+## EXP-001 — contrat synthétique proposé
+
+`atelier-demo` consomme `atelier-contrat` ; `etiquette(u32)` renvoie une chaîne. Le test `experiments/demo/tests/contrat.rs` vérifie des exemples. Ce contrat expérimental n'est ni un contrat produit ni une approbation collective.
