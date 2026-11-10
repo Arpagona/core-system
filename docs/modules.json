@@ -1,8 +1,90 @@
 {
   "version": 1,
   "modules": [
-    {"name": "atelier-contrat", "path": "experiments/contrat", "responsibility": "Fournisseur synthétique du contrat expérimental", "dependencies": [], "contracts": ["EXP-001"]},
-    {"name": "atelier-demo", "path": "experiments/demo", "responsibility": "Consommateur synthétique et démonstrateur non productif", "dependencies": ["atelier-contrat"], "contracts": ["EXP-001"]}
+    {
+      "name": "atelier-contrat",
+      "path": "experiments/contrat",
+      "responsibility": "Fournisseur synthétique du contrat expérimental",
+      "dependencies": [],
+      "contracts": [
+        "EXP-001"
+      ]
+    },
+    {
+      "name": "atelier-demo",
+      "path": "experiments/demo",
+      "responsibility": "Consommateur synthétique et démonstrateur non productif",
+      "dependencies": [
+        "atelier-contrat"
+      ],
+      "contracts": [
+        "EXP-001"
+      ]
+    },
+    {
+      "name": "agentcore-types",
+      "path": "crates/agentcore-types",
+      "responsibility": "Contrats communs M0 du noyau (proposés, non approuvés)",
+      "dependencies": [],
+      "contracts": [
+        "C-01",
+        "C-02",
+        "C-03",
+        "C-04",
+        "C-05",
+        "C-06",
+        "C-07"
+      ]
+    }
   ],
-  "contracts": [{"id": "EXP-001", "status": "proposé", "source": "docs/INTERFACES.md", "test": "experiments/demo/tests/contrat.rs"}]
+  "contracts": [
+    {
+      "id": "EXP-001",
+      "status": "proposé",
+      "source": "docs/INTERFACES.md",
+      "test": "experiments/demo/tests/contrat.rs"
+    },
+    {
+      "id": "C-01",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-02",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-03",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-04",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-05",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-06",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    },
+    {
+      "id": "C-07",
+      "status": "proposé",
+      "source": "docs/contrats/M0-CONTRATS.md",
+      "test": "crates/agentcore-types/tests/contrats.rs"
+    }
+  ]
 }

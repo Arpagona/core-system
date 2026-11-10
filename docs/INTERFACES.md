@@ -1,5 +1,7 @@
 # Contrats — propositions non approuvées
 
+**Contrats produit M0 (proposés, non approuvés) :** voir [contrats/M0-CONTRATS.md](contrats/M0-CONTRATS.md), source Rust `crates/agentcore-types`. Le tableau ci-dessous reste la première discussion d'atelier.
+
 Aucune signature Rust publique n'est encore figée. Les noms ci-dessous expriment les besoins de la première discussion, pas une API à implémenter immédiatement.
 
 | Port | Entrée proposée | Sortie proposée | Limites |

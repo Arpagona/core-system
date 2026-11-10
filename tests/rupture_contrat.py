@@ -9,7 +9,7 @@ import tempfile
 root = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix="atelier-contrat-", dir=os.environ.get("TMPDIR")) as tmp:
     dest = Path(tmp)
-    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "experiments"):
+    for name in ("Cargo.toml", "Cargo.lock", "rust-toolchain.toml", "experiments", "crates"):
         src = root / name
         if src.is_dir():
             shutil.copytree(src, dest / name)
