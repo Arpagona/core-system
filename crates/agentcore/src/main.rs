@@ -28,7 +28,7 @@ USAGE
   agentcore [--config FICHIER] mission run --input DOSSIER [--input DOSSIER…] --goal TEXTE [--deliverable synthese.md]
   agentcore [--config FICHIER] mission list [--json]
   agentcore [--config FICHIER] mission status ID
-  agentcore [--config FICHIER] mission log ID
+  agentcore [--config FICHIER] mission log ID [--json]
   agentcore [--config FICHIER] mission resume ID
   agentcore [--config FICHIER] mission resolve ID --call APPEL --as done|not-done [--by NOM]
   agentcore [--config FICHIER] mission cancel ID
@@ -355,6 +355,19 @@ fn main() -> ExitCode {
                 return fail("ID requis");
             };
             match journal::load(&journal::mission_dir(&cfg.state_dir, &id)) {
+                Ok((events, proj, truncated)) if rest.iter().any(|a| a == "--json") => {
+                    let report = report_json(&proj, &events, &cfg.model);
+                    out!(
+                        "{}",
+                        serde_json::json!({
+                            "mission": id,
+                            "events": events,
+                            "report": report,
+                            "truncated": truncated,
+                        })
+                    );
+                    ExitCode::SUCCESS
+                }
                 Ok((events, _, _)) => {
                     for e in events {
                         out!(

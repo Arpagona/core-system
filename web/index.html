@@ -3,28 +3,132 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Missions · Arpagona Agent Core</title>
+  <meta name="console-token" content="{{TOKEN}}">
+  <title>Mission Control · ARPAGONA Agent Core</title>
   <link rel="stylesheet" href="/console.css">
+  <script defer src="/pixels.js"></script>
   <script defer src="/console.js"></script>
 </head>
 <body>
-  <header>
-    <strong>ARPAGONA<span>Agent Core</span></strong>
-    <p id="opencode" role="status">OpenCode · Vérification…</p>
+  <header class="top">
+    <div class="brand">
+      <span class="logo" data-px="logo" data-scale="4"></span>
+      <span class="brand-text"><strong>ARPAGONA</strong><span>Agent Core</span></span>
+    </div>
+    <div class="top-title">
+      <span data-px="term" data-scale="3"></span>
+      <h1 id="view-title">Mission Control</h1>
+    </div>
+    <div class="top-right">
+      <p class="pill" id="agent-pill" role="status"><span class="dot"></span><span id="agent-state">Agent Core : …</span></p>
+      <button class="icon-btn" id="bell" type="button" title="Demandes de validation" aria-label="Demandes de validation">
+        <span data-px="bell" data-scale="3"></span><span class="badge" id="bell-badge" hidden>0</span>
+      </button>
+      <button class="icon-btn" id="help" type="button" title="Aide" aria-label="Aide" aria-expanded="false">
+        <span data-px="help" data-scale="3"></span>
+      </button>
+      <span class="icon-btn" id="who" title="Opérateur"><span data-px="user" data-scale="3"></span></span>
+    </div>
+    <div class="help-pop px" id="help-pop" hidden>
+      <strong>Console Agent Core</strong>
+      <p>Les données viennent des journaux réels des missions (CLI <code>agentcore</code>). Les actions passent par la même CLI : politique de fichiers et plafonds de dépenses s'appliquent.</p>
+      <p>Accès depuis l'iMac : <code>ssh -N -L 8765:127.0.0.1:8765 agentcore</code>, puis <code>http://127.0.0.1:8765</code>.</p>
+    </div>
   </header>
-  <main>
-    <section aria-labelledby="title">
-      <div class="heading">
-        <h1 id="title">Missions</h1>
-        <button id="refresh" type="button">Actualiser</button>
-      </div>
-      <p id="status" role="status"></p>
-      <ul id="missions"></ul>
-    </section>
-    <section aria-labelledby="detail">
-      <h2 id="detail">Journal de mission</h2>
-      <pre id="journal" tabindex="0" aria-live="polite">Sélectionne une mission pour consulter son journal.</pre>
-    </section>
-  </main>
+
+  <div class="shell">
+    <nav class="side" aria-label="Navigation">
+      <ul>
+        <li><a href="#control" data-view="control"><span data-px="home" data-scale="3"></span>Mission Control</a></li>
+        <li><a href="#sessions" data-view="sessions"><span data-px="chat" data-scale="3"></span>Sessions</a></li>
+        <li><a href="#missions" data-view="missions"><span data-px="target" data-scale="3"></span>Missions</a></li>
+        <li><a href="#garage" data-view="garage"><span data-px="cubes" data-scale="3"></span>Garage</a></li>
+        <li><a href="#dream" data-view="dream"><span data-px="moon" data-scale="3"></span>Dream</a></li>
+        <li><a href="#guardian" data-view="guardian"><span data-px="shield" data-scale="3"></span>Guardian</a></li>
+        <li><a href="#validations" data-view="validations"><span data-px="check" data-scale="3"></span>Validations<span class="badge" id="nav-badge" hidden>0</span></a></li>
+        <li><a href="#ressources" data-view="ressources"><span data-px="bars" data-scale="3"></span>Ressources</a></li>
+      </ul>
+      <hr>
+      <ul>
+        <li><a href="#configuration" data-view="configuration"><span data-px="gear" data-scale="3"></span>Configuration</a></li>
+      </ul>
+      <div class="scene" data-px="scene-mountains"></div>
+    </nav>
+
+    <main>
+      <!-- Mission Control -->
+      <section class="view" id="view-control">
+        <div class="cards">
+          <a class="card px" href="#missions" data-view="missions">
+            <span data-px="target" data-scale="4"></span>
+            <span><b>Missions</b><em class="green" id="c-missions">…</em><i class="bar"><i id="c-missions-bar"></i></i></span>
+          </a>
+          <a class="card px" href="#garage" data-view="garage">
+            <span data-px="cubes" data-scale="4"></span>
+            <span><b>Garage</b><em class="orange" id="c-garage">…</em></span>
+          </a>
+          <a class="card px" href="#dream" data-view="dream">
+            <span data-px="moon" data-scale="4"></span>
+            <span><b>Dream</b><em class="purple" id="c-dream">…</em></span>
+          </a>
+          <a class="card px" href="#guardian" data-view="guardian">
+            <span data-px="shield" data-scale="4"></span>
+            <span><b>Guardian</b><em class="green" id="c-guardian">…</em></span>
+          </a>
+          <a class="card px" href="#ressources" data-view="ressources">
+            <span data-px="chip" data-scale="4"></span>
+            <span><b>Ressources</b><em class="purple" id="c-res">…</em><i class="bar mauve"><i id="c-res-bar"></i></i></span>
+          </a>
+        </div>
+
+        <div class="work">
+          <section class="panel px chat" aria-labelledby="chat-title">
+            <header class="panel-head">
+              <span data-px="chat" data-scale="3"></span>
+              <h2 id="chat-title">Session · Agent Core</h2>
+              <span class="online" id="online"><span class="dot"></span>En ligne</span>
+              <label class="session-pick">
+                <span class="sr">Session</span>
+                <select id="session-select"></select>
+              </label>
+              <button class="icon-btn" id="raw-toggle" type="button" title="Journal brut" aria-label="Journal brut" aria-pressed="false"><span data-px="dots" data-scale="3"></span></button>
+            </header>
+            <div class="messages" id="messages" aria-live="polite"></div>
+            <pre class="raw" id="raw" hidden></pre>
+            <form class="composer" id="composer">
+              <button class="icon-btn sq" id="input-pick" type="button" title="Dossier d'entrée" aria-label="Choisir le dossier d'entrée"><span data-px="plus" data-scale="2"></span></button>
+              <div class="input-pop px" id="input-pop" hidden></div>
+              <textarea id="goal" rows="1" maxlength="2000" placeholder="Écrire un message à Agent Core..." aria-label="Consigne de mission"></textarea>
+              <button class="send" type="submit" title="Lancer la mission" aria-label="Lancer la mission"><span data-px="send" data-scale="2"></span></button>
+            </form>
+            <p class="composer-note" id="composer-note"></p>
+          </section>
+
+          <aside class="right">
+            <section class="panel px" aria-labelledby="act-title">
+              <header class="panel-head"><span data-px="pulse" data-scale="3"></span><h2 id="act-title">Activité en cours</h2></header>
+              <ol class="steps" id="steps"></ol>
+            </section>
+            <section class="panel px" aria-labelledby="val-title">
+              <header class="panel-head"><span data-px="check" data-scale="3"></span><h2 id="val-title">Demandes de validation</h2><span class="badge" id="val-badge" hidden>0</span></header>
+              <div class="val-list" id="val-list"></div>
+            </section>
+            <div class="scene robot" data-px="scene-robot"></div>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Vues secondaires : remplies par console.js -->
+      <section class="view panel px page" id="view-sessions" hidden></section>
+      <section class="view panel px page" id="view-missions" hidden></section>
+      <section class="view panel px page" id="view-garage" hidden></section>
+      <section class="view panel px page" id="view-dream" hidden></section>
+      <section class="view panel px page" id="view-guardian" hidden></section>
+      <section class="view panel px page" id="view-validations" hidden></section>
+      <section class="view panel px page" id="view-ressources" hidden></section>
+      <section class="view panel px page" id="view-configuration" hidden></section>
+      <p class="toast" id="toast" role="status" hidden></p>
+    </main>
+  </div>
 </body>
 </html>
