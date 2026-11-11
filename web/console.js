@@ -392,7 +392,7 @@ async function act(id, action, body, question) {
   if (question && !window.confirm(question)) return;
   try {
     const r = await api(`/api/missions/${encodeURIComponent(id)}/${action}`, body);
-    toast(r.message || (action === "cancel" ? "Mission annulée." : "Mission relancée."));
+    toast({ cancel: "Mission annulée.", resume: "Mission relancée.", resolve: "Décision enregistrée : la mission reprend." }[action] || r.message || "Action effectuée.");
   } catch (e) { toast(e.message, true); }
   app.detailKey = "";
   refreshOverview();
