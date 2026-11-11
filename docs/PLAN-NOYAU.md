@@ -140,7 +140,7 @@ Conséquences à assumer et à écrire dans l'ADR :
 
 - le code des missions transite vers un fournisseur externe ; aucune donnée client réelle dans les prompts en v0.1 ;
 - le coût par mission devient mesurable et doit être journalisé (tokens consommés par mission) ;
-- la latence dépend du réseau : les délais et le retry borné ne sont pas optionnels ;
+- la latence dépend du réseau : chaque appel a un délai et suit la règle de non-rejeu de C-03 ;
 - la souveraineté locale reste une option future, pas un prérequis de la v0.1.
 
 **Le noyau est identique dans les deux cas** : c'est précisément l'intérêt du port `ModelPort`.
@@ -157,7 +157,7 @@ Estimations en jours-homme, à trois en parallèle après validation des contrat
 |---|---|---|---|---|
 | **M0 — Socle** | crates réels, contrats C-01…C-07 figés, ADR, faux modèle déterministe | `agentcore mission --fake` sur mission synthétique | état de mission projeté depuis le journal ; tests de contrat verts ; aucun accès réseau | 2 j |
 | **M1 — Boucle et reprise** | boucle de décision, store SQLite, arrêt/reprise | mission de 3 étapes, `kill -9` au milieu, reprise sans double effet | état `uncertain` correct, zéro rejeu d'effet, journal rejouable | 3 j |
-| **M2 — Modèle réel** | adaptateur OpenAI-compatible, délais, retry borné, budgets | mission réelle sur un modèle choisi | réponse structurée valide, dépassement de budget arrêté proprement, erreur fournisseur non confondue avec succès | 2 j |
+| **M2 — Modèle réel** | adaptateur OpenAI-compatible, délais, arrêt explicite en cas d’erreur, budgets | mission réelle sur un modèle choisi | réponse structurée valide, dépassement de budget arrêté proprement, erreur fournisseur non confondue avec succès | 2 j |
 | **M3 — Outils et politique** | registre typé, 4 outils, défaut refus, approbation | tentative d'écriture hors espace de travail refusée ; action sensible bloquée en attente | refus journalisé avec motif ; approbation nécessaire avant effet ; 100 % des appels tracés | 4 j |
 | **M4 — API et observabilité** | HTTP local, health, logs JSON, métriques minimales | `curl` soumet, suit et approuve une mission | aucune écoute hors boucle locale ; annulation effective sous 5 s | 2 j |
 | **M5 — Packaging et VM** | binaire statique, unité systemd durcie, sauvegarde, retour arrière | installation reproductible sur la VM Atlas | installation sur VM vierge rejouée deux fois ; redémarrage hôte → service sain ; restauration testée | 2 j |
@@ -234,7 +234,7 @@ Aucun test de CI n'appelle un modèle payant. Les tests réels sont explicitemen
 
 **Justification.** Décision de principe de Thibaud du 10/11/2026 ; pas de nouvelle surface d'attaque réseau ; réversible par le port `ModelPort`.
 
-**Conséquences.** Code des missions transmis à un tiers (aucune donnée client réelle en v0.1) ; coût et latence à mesurer par mission ; délais et retry bornés obligatoires ; adjonction ultérieure d'un adaptateur local sans modification du noyau.
+**Conséquences.** Code des missions transmis à un tiers (aucune donnée client réelle en v0.1) ; coût et latence à mesurer par mission ; délais bornés et arrêt explicite en cas d’erreur selon C-03 ; adjonction ultérieure d'un adaptateur local sans modification du noyau.
 
 **Relecture requise.** Maël et Stéphane, avant M2.
 
