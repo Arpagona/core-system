@@ -10,7 +10,7 @@ const STATE_LABEL = {
 const VIEW_TITLE = {
   control: "Mission Control", sessions: "Sessions", missions: "Missions", garage: "Garage",
   dream: "Dream", guardian: "Guardian", validations: "Validations", ressources: "Ressources",
-  configuration: "Configuration",
+  configuration: "Configuration", opencode: "OpenCode",
 };
 const TOOL_VERB = { list_dir: "Lister", read_file: "Lire", write_file: "Écrire", finish: "Terminer" };
 
@@ -530,7 +530,42 @@ const PAGES = {
   },
 };
 
+async function refreshOpenCode() {
+  const button = $("#opencode-start");
+  const status = $("#opencode-status");
+  try {
+    const result = await api("/api/opencode-lab");
+    button.disabled = !result.configured || result.state === "running";
+    const states = {
+      idle: "Prêt à lancer.", running: "OpenCode travaille…",
+      passed: "Les trois vérifications passent.", failed: "L’essai a échoué.",
+    };
+    status.textContent = !result.configured ? "OpenCode doit être configuré sur le serveur."
+      : result.error || states[result.state];
+    $("#opencode-diff").textContent = result.diff || "—";
+    $("#opencode-tests").replaceChildren(...(result.tests || []).map((test) =>
+      h("li", {}, `${test.quantity} × ${test.price} · attendu ${test.expected} · obtenu ${test.actual} · ${test.passed ? "réussi" : "échec"}`)
+    ));
+  } catch (error) {
+    button.disabled = true;
+    status.textContent = error.message;
+  }
+}
+
+$("#opencode-start").addEventListener("click", async (event) => {
+  if (!window.confirm("Lancer un appel OpenCode avec le modèle de test ?")) return;
+  event.currentTarget.disabled = true;
+  try {
+    await api("/api/opencode-lab", {});
+    await refreshOpenCode();
+  } catch (error) {
+    await refreshOpenCode();
+    toast(error.message, true);
+  }
+});
+
 function renderPage() {
+  if (app.view === "opencode") return;
   if (app.view === "control" || !app.overview) return;
   const sec = $(`#view-${app.view}`);
   sec.replaceChildren(h("header", { class: "panel-head" }, sprite({ sessions: "chat", missions: "target", garage: "cubes", dream: "moon", guardian: "shield", validations: "check", ressources: "bars", configuration: "gear" }[app.view], 3), h("h2", {}, VIEW_TITLE[app.view])),
@@ -546,7 +581,8 @@ function setView(view) {
   for (const a of document.querySelectorAll(".side a")) a.toggleAttribute("aria-current", a.dataset.view === view);
   for (const a of document.querySelectorAll(".side a[aria-current]")) a.setAttribute("aria-current", "page");
   $("#view-title").textContent = VIEW_TITLE[view];
-  renderPage();
+  if (view === "opencode") refreshOpenCode();
+  else renderPage();
 }
 
 // ---------- câblage ----------
@@ -573,3 +609,4 @@ paint(document);
 setView(location.hash.slice(1) || "control");
 refreshOverview().then(() => { renderInputPicker(); noteInput(); });
 setInterval(refreshOverview, 5000);
+setInterval(() => { if (app.view === "opencode") refreshOpenCode(); }, 2000);

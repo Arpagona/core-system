@@ -19,6 +19,8 @@ import subprocess
 import threading
 import time
 
+from opencode_lab import OpenCodeLab
+
 HERE = Path(__file__).resolve().parent
 ASSETS = {
     "/": ("index.html", "text/html; charset=utf-8"),
@@ -157,6 +159,9 @@ class Console(BaseHTTPRequestHandler):
             self.reply(200, content, ctype)
             return
         try:
+            if self.path == "/api/opencode-lab":
+                self.json_reply(200, self.server.opencode_lab.status())
+                return
             if self.path == "/api/overview":
                 self.json_reply(200, self.overview())
                 return
@@ -290,6 +295,13 @@ class Console(BaseHTTPRequestHandler):
             self.json_reply(400, {"error": str(e)})
             return
         try:
+            if self.path == "/api/opencode-lab":
+                if data != {}:
+                    self.json_reply(400, {"error": "Cet essai utilise un scénario fixe."})
+                    return
+                status, result = self.server.opencode_lab.start()
+                self.json_reply(status, result)
+                return
             if self.path == "/api/missions":
                 self.launch(data)
                 return
@@ -350,13 +362,19 @@ def main():
     parser.add_argument("--input-autorise", action="append", default=[],
                         help="dossier d'entrée autorisé pour lancer une mission (répétable)")
     parser.add_argument("--recette-dir", default="~/recette")
+    parser.add_argument("--opencode-bin", help="chemin du binaire OpenCode autonome")
+    parser.add_argument("--opencode-model", help="modèle fournisseur/modèle")
+    parser.add_argument("--opencode-key-env", help="nom de la variable contenant la clé de test")
     args = parser.parse_args()
+    if args.opencode_key_env and not re.fullmatch(r"[A-Z][A-Z0-9_]*_API_KEY", args.opencode_key_env):
+        parser.error("--opencode-key-env doit désigner une variable de type FOURNISSEUR_API_KEY")
     inputs = [str(Path(p).resolve()) for p in args.input_autorise]
     if not inputs:
         demo = Path(shutil.which(args.agentcore) or args.agentcore).resolve().with_name("demo")
         inputs = [str(demo)] if demo.is_dir() else []
     with ThreadingHTTPServer(("127.0.0.1", args.port), Console) as server:
         server.agentcore = [args.agentcore] + (["--config", args.config] if args.config else [])
+        server.opencode_lab = OpenCodeLab(args.opencode_bin, args.opencode_model, args.opencode_key_env)
         server.token = secrets.token_urlsafe(24)
         server.inputs = inputs
         server.recette_dir = args.recette_dir
