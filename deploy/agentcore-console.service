@@ -1,0 +1,31 @@
+[Unit]
+Description=Console Mission Control d'Agent Core (boucle locale 127.0.0.1:8765, accès par tunnel SSH)
+Documentation=file:///opt/agentcore/current/web/console.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=agentcore
+Group=agentcore
+ExecStart=/usr/bin/python3 /opt/agentcore/current/web/console.py --agentcore /usr/local/bin/agentcore --port 8765
+Restart=on-failure
+RestartSec=3
+UMask=0027
+# Durcissement : la console et les missions qu'elle lance n'écrivent que dans l'état d'Agent Core.
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/agentcore
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

@@ -14,4 +14,5 @@ fi
 [ -x "$TARGET/agentcore" ] || { echo "version introuvable : $TARGET" >&2; ls /opt/agentcore/releases >&2; exit 1; }
 ln -sfn "$TARGET" /opt/agentcore/current.new && mv -T /opt/agentcore/current.new /opt/agentcore/current
 echo "version active : $(readlink -f /opt/agentcore/current)"
+systemctl try-restart agentcore-console.service 2>/dev/null || true
 /usr/local/bin/agentcore version

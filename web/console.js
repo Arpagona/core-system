@@ -17,7 +17,10 @@ const TOOL_VERB = { list_dir: "Lister", read_file: "Lire", write_file: "Écrire"
 const app = {
   overview: null, selected: null, detail: null, detailKey: "", view: "control",
   input: null, filter: "all", busy: false, timers: {},
+  showTests: localStorage.getItem("ac-show-tests") === "1",
 };
+const isTest = (m) => Boolean(m && m.origin);
+const shown = (ms) => (app.showTests ? ms : ms.filter((m) => !isTest(m)));
 
 // ---------- utilitaires ----------
 function h(tag, attrs, ...children) {
@@ -95,7 +98,8 @@ async function refreshOverview() {
   }
   const ms = app.overview.missions;
   if (!app.selected || !ms.some((m) => m.id === app.selected)) {
-    const pick = ms.find((m) => m.state === "running") || ms.find((m) => m.state === "uncertain") || ms[0];
+    const real = shown(ms);
+    const pick = ms.find((m) => m.state === "running") || ms.find((m) => m.state === "uncertain") || real[0] || ms[0];
     app.selected = pick ? pick.id : null;
   }
   renderTop();
@@ -121,7 +125,7 @@ function renderTop(error) {
 
 function renderCards() {
   const o = app.overview;
-  const ms = o.missions;
+  const ms = shown(o.missions);
   const active = ms.filter((m) => m.state === "running" || m.state === "queued").length;
   const dayAgo = Date.now() - 86400000;
   const today = ms.filter((m) => (idDate(m.id) || 0) >= dayAgo);
@@ -131,7 +135,7 @@ function renderCards() {
   $("#c-missions-bar").parentElement.title = `${done} terminée(s) sur ${today.length} mission(s) en 24 h`;
   const problems = today.filter((m) => m.state === "failed").length + o.validations.length;
   $("#c-garage").textContent = `${problems} problème${problems > 1 ? "s" : ""}`;
-  $("#c-garage").title = "missions en échec sur 24 h + validations en attente";
+  $("#c-garage").title = `missions en échec sur 24 h + validations en attente${app.showTests ? "" : " (missions de recette exclues)"}`;
   $("#c-dream").textContent = o.dream.configured ? `Prochaine : ${o.dream.next}` : "Non configuré";
   $("#c-dream").className = o.dream.configured ? "purple" : "muted";
   const g = o.guardian;
@@ -144,10 +148,10 @@ function renderCards() {
 
 function renderSelect() {
   const sel = $("#session-select");
-  const ms = app.overview.missions;
+  const ms = app.overview.missions.filter((m) => !isTest(m) || app.showTests || m.id === app.selected);
   const key = ms.map((m) => m.id + m.state).join("|");
   if (sel.dataset.key !== key) {
-    sel.replaceChildren(...ms.map((m) => h("option", { value: m.id }, `Session ${shortId(m.id)} · ${STATE_LABEL[m.state] || m.state}`)));
+    sel.replaceChildren(...ms.map((m) => h("option", { value: m.id }, `Session ${shortId(m.id)} · ${STATE_LABEL[m.state] || m.state}${isTest(m) ? " · recette" : ""}`)));
     sel.dataset.key = key;
   }
   if (app.selected) sel.value = app.selected;
@@ -438,24 +442,34 @@ function missionTable(ms) {
   return h("table", { class: "table" },
     h("thead", {}, h("tr", {}, h("th", {}, "Session"), h("th", {}, "Date"), h("th", {}, "État"), h("th", {}, "Consigne"))),
     h("tbody", {}, ms.map((m) => h("tr", { class: "clickable", onclick: () => select(m.id) },
-      h("td", {}, shortId(m.id)), h("td", {}, fmtDate(idDate(m.id))), h("td", {}, stateTag(m.state)),
+      h("td", {}, shortId(m.id), isTest(m) ? h("span", { class: "tag-test" }, m.origin) : null), h("td", {}, fmtDate(idDate(m.id))), h("td", {}, stateTag(m.state)),
       h("td", {}, (m.goal || "").slice(0, 140) + ((m.goal || "").length > 140 ? "…" : ""))))));
+}
+
+function testToggle() {
+  const n = app.overview.missions.filter(isTest).length;
+  return h("button", { class: "btn", type: "button", "aria-pressed": String(app.showTests),
+    onclick: () => { app.showTests = !app.showTests; localStorage.setItem("ac-show-tests", app.showTests ? "1" : "0"); renderCards(); renderSelect(); renderPage(); } },
+  `${app.showTests ? "Masquer" : "Afficher"} les missions de recette (${n})`);
 }
 
 const PAGES = {
   sessions(o) {
-    return [h("p", { class: "lead" }, "Chaque session est une mission et sa conversation avec Agent Core. Cliquer pour l'ouvrir dans Mission Control."), missionTable(o.missions)];
+    return [h("p", { class: "lead" }, "Chaque session est une mission et sa conversation avec Agent Core. Cliquer pour l'ouvrir dans Mission Control."),
+      h("div", { class: "filters" }, testToggle()), missionTable(shown(o.missions))];
   },
   missions(o) {
     const filters = [["all", "Toutes"], ["running", "En cours"], ["completed", "Terminées"], ["failed", "En échec"], ["uncertain", "À valider"], ["cancelled", "Annulées"]];
-    const ms = o.missions.filter((m) => app.filter === "all" || m.state === app.filter);
+    const base = shown(o.missions);
+    const ms = base.filter((m) => app.filter === "all" || m.state === app.filter);
     return [h("div", { class: "filters" }, filters.map(([k, label]) => h("button", { class: "btn", type: "button", "aria-pressed": String(app.filter === k), onclick: () => { app.filter = k; renderPage(); } },
-      `${label} (${k === "all" ? o.missions.length : o.missions.filter((m) => m.state === k).length})`))), missionTable(ms)];
+      `${label} (${k === "all" ? base.length : base.filter((m) => m.state === k).length})`)), testToggle()), missionTable(ms)];
   },
   garage(o) {
-    const failed = o.missions.filter((m) => m.state === "failed").slice(0, 30);
+    const failed = shown(o.missions).filter((m) => m.state === "failed").slice(0, 30);
     const tbody = h("tbody", {});
     const wrap = [h("p", { class: "lead" }, "Missions en échec (30 plus récentes) et validations en attente. Les causes viennent du journal de chaque mission."),
+      h("div", { class: "filters" }, testToggle()),
       o.validations.length ? h("div", { class: "val-list" }, o.validations.map(valCard)) : null,
       h("table", { class: "table" }, h("thead", {}, h("tr", {}, h("th", {}, "Session"), h("th", {}, "Date"), h("th", {}, "Cause"), h("th", {}, "Consigne"))), tbody)];
     failed.forEach((m) => {
