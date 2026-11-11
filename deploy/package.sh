@@ -8,7 +8,7 @@ VERSION="0.1.0-$COMMIT"
 AGENTCORE_COMMIT="$COMMIT" cargo build --release --locked -p agentcore
 OUT="dist/agentcore-$VERSION"
 rm -rf "$OUT" && mkdir -p "$OUT"
-cp target/release/agentcore deploy/config.example.toml deploy/install.sh deploy/rollback.sh deploy/recette.sh "$OUT/"
+cp target/release/agentcore deploy/config.example.toml deploy/install.sh deploy/rollback.sh deploy/recette.sh deploy/modele_scripte.py "$OUT/"
 cp -r demo/dossier-synthetique "$OUT/demo"
 printf 'version=%s\ncommit=%s\nbuilt=%s\n' "$VERSION" "$(git rev-parse HEAD)" "$(date -u +%FT%TZ)" > "$OUT/VERSION"
 (cd "$OUT" && sha256sum agentcore > SHA256SUMS)
