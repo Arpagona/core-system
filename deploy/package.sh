@@ -10,6 +10,7 @@ OUT="dist/agentcore-$VERSION"
 rm -rf "$OUT" && mkdir -p "$OUT"
 cp target/release/agentcore deploy/config.example.toml deploy/install.sh deploy/rollback.sh deploy/recette.sh "$OUT/"
 cp -r demo/dossier-synthetique "$OUT/demo"
+cp -r web "$OUT/web" && rm -rf "$OUT/web/__pycache__"
 printf 'version=%s\ncommit=%s\nbuilt=%s\n' "$VERSION" "$(git rev-parse HEAD)" "$(date -u +%FT%TZ)" > "$OUT/VERSION"
 (cd "$OUT" && sha256sum agentcore > SHA256SUMS)
 tar -C dist -czf "$OUT.tar.gz" "agentcore-$VERSION"

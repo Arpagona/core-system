@@ -18,6 +18,7 @@ install -m 0755 "$HERE/agentcore" "$REL/agentcore"
 install -m 0644 "$HERE/VERSION" "$HERE/SHA256SUMS" "$REL/"
 install -m 0755 "$HERE/install.sh" "$HERE/rollback.sh" "$HERE/recette.sh" "$REL/"
 rm -rf "$REL/demo" && cp -r "$HERE/demo" "$REL/demo" && chmod -R a+rX "$REL/demo"
+if [ -d "$HERE/web" ]; then rm -rf "$REL/web" && cp -r "$HERE/web" "$REL/web" && chmod -R a+rX "$REL/web"; fi
 ln -sfn "$REL" /opt/agentcore/current.new && mv -T /opt/agentcore/current.new /opt/agentcore/current
 ln -sfn /opt/agentcore/current/agentcore /usr/local/bin/agentcore
 install -d -m 0750 -o root -g "$USER_NAME" /etc/agentcore
