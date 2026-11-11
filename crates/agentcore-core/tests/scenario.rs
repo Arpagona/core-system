@@ -527,3 +527,132 @@ fn plafond_quotidien_arrete_la_mission() {
     );
     assert_eq!(agentcore_core::spent_since(&e.state, 0), 2400);
 }
+
+// Characterisation of snapshot behaviour, NOT acceptance tests for safe budgets.
+#[test]
+fn caracterisation_timeout_apres_reception_rejoue_le_post() {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::time::{Duration, Instant};
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = std::thread::spawn(move || {
+        let deadline = Instant::now() + Duration::from_secs(8);
+        let mut requests = 0;
+        let mut held = Vec::new();
+        while requests < 2 && Instant::now() < deadline {
+            match listener.accept() {
+                Ok((mut stream, _)) => {
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(2)))
+                        .unwrap();
+                    let mut received = Vec::new();
+                    let mut buf = [0; 4096];
+                    loop {
+                        let n = stream.read(&mut buf).unwrap();
+                        assert!(n > 0, "requête HTTP incomplète");
+                        received.extend_from_slice(&buf[..n]);
+                        if let Some(end) = received.windows(4).position(|x| x == b"\r\n\r\n") {
+                            let headers = String::from_utf8_lossy(&received[..end]);
+                            let size: usize = headers
+                                .lines()
+                                .find_map(|line| {
+                                    let (key, value) = line.split_once(':')?;
+                                    key.eq_ignore_ascii_case("content-length")
+                                        .then(|| value.trim().parse().unwrap())
+                                })
+                                .expect("content-length");
+                            if received.len() >= end + 4 + size {
+                                assert!(headers.starts_with("POST /chat/completions "));
+                                break;
+                            }
+                        }
+                    }
+                    requests += 1;
+                    // Headers received, body withheld: the server has the complete POST.
+                    stream
+                        .write_all(
+                            b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n",
+                        )
+                        .unwrap();
+                    held.push(stream);
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    std::thread::sleep(Duration::from_millis(5))
+                }
+                Err(e) => panic!("accept: {e}"),
+            }
+        }
+        // Keep both sockets alive long enough for the second client timeout.
+        std::thread::sleep(Duration::from_millis(1500));
+        requests
+    });
+    let e = env();
+    let mut j = mission(&e, Limits::default());
+    let model = agentcore_core::model::OpenAiCompatible::new(
+        &format!("http://{addr}"),
+        "fixture",
+        "synthetic".into(),
+        1,
+        None,
+    );
+    let cfg = RunConfig {
+        retry_delays: vec![Duration::ZERO],
+        ..RunConfig::default()
+    };
+    let runner = Runner {
+        model: &model,
+        policy: &DefaultPolicy,
+        tools: tools::registry(),
+        cfg: &cfg,
+    };
+    runner.run(&mut j).unwrap();
+    assert_eq!(
+        server.join().unwrap(),
+        2,
+        "deux POST complets reçus pour une itération"
+    );
+    assert_eq!(
+        j.events
+            .iter()
+            .filter(|e| matches!(e.kind, EventKind::ModelCalled { .. }))
+            .count(),
+        1
+    );
+    assert!(j.events.iter().any(|e| matches!(
+        e.kind,
+        EventKind::ModelFailed {
+            error: ModelError::Timeout,
+            ..
+        }
+    )));
+    assert_eq!(j.projection().unwrap().cost_microusd, 0);
+}
+
+#[test]
+fn caracterisation_usage_absent_comptabilise_zero() {
+    let response = agentcore_core::model::parse_response(&json!({
+        "choices": [{"message": {"content": "réponse synthétique"}, "finish_reason": "stop"}]
+    }))
+    .unwrap();
+    assert_eq!(response.usage.input_tokens, 0);
+    assert_eq!(response.usage.output_tokens, 0);
+    let e = env();
+    let mut limits = Limits::default();
+    limits.max_iterations = 1;
+    let mut j = mission(&e, limits);
+    let (_, calls) = run(&e, &mut j, vec![Ok(response)]);
+    assert_eq!(calls, 1);
+    assert!(j.events.iter().any(|e| matches!(
+        e.kind,
+        EventKind::ModelReplied {
+            cost_microusd: 0,
+            ..
+        }
+    )));
+    let p = j.projection().unwrap();
+    assert_eq!(p.usage.total(), 0);
+    assert_eq!(p.cost_microusd, 0);
+}
