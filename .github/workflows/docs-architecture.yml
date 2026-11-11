@@ -16,4 +16,5 @@ jobs:
       - run: python3 scripts/architecture.py
       - run: python3 tests/architecture.py
       - run: python3 tests/guardian.py
+      - run: python3 tests/bench_verifier.py
       - run: python3 scripts/build_docs.py

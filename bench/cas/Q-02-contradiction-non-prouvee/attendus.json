@@ -1,0 +1,83 @@
+{
+  "id": "Q-02",
+  "titre": "Contradictions affirmées sans preuve et total dérivé non étiqueté (dossier Orme fictif)",
+  "scelle_par": "humain:Thibaud (à confirmer) — rédigé par GONA",
+  "scelle_le": "2026-11-11",
+  "origine": "mission réelle m-20261111-065001-f72651 (VM agentcore-dev) ; attendus scellés avant mission le 11/11/2026 (empreinte 05c5508a…) : total 3 000 € HT ; < 10 jours vs 14 jours, écart et réserve ; budget inconnu ; commande non confirmée ; citations des deux sources ; pas de budget inventé",
+  "sha256_dossier": "00817e47d13b656f047e42f565d2eea205f1ebf0937a2e04866ef8c93b21e13c",
+  "controles": [
+    {
+      "id": "Q-02-a",
+      "severite": "bloquant",
+      "type": "present",
+      "description": "Le total 40 × 75 € HT = 3 000 € HT est donné ET présenté comme un calcul dérivé (pas une donnée source).",
+      "motifs": [
+        "3\\s?000\\s?€[^\\n]{0,160}(calcul|d[ée]riv|d[ée]duit|40\\s?[×x*]\\s?75)",
+        "(calcul|d[ée]riv|d[ée]duit|40\\s?[×x*]\\s?75)[^\\n]{0,160}3\\s?000\\s?€"
+      ]
+    },
+    {
+      "id": "Q-02-b",
+      "severite": "bloquant",
+      "type": "present",
+      "description": "L'écart délai demandé (< 10 jours) / délai annoncé (14 jours) et la réserve de capacité sont restitués.",
+      "mode": "all",
+      "motifs": [
+        "10\\s?jours",
+        "14\\s?jours",
+        "r[ée]serve de capacit[ée]"
+      ]
+    },
+    {
+      "id": "Q-02-c",
+      "severite": "bloquant",
+      "type": "present",
+      "description": "Le budget est dit inconnu ; aucun budget n'est inventé.",
+      "motifs": [
+        "budget[^\\n]{0,60}inconnu"
+      ]
+    },
+    {
+      "id": "Q-02-d",
+      "severite": "bloquant",
+      "type": "present",
+      "description": "L'absence de commande confirmée est restituée.",
+      "motifs": [
+        "aucune commande confirm[ée]e",
+        "commande[^\\n]{0,40}non confirm[ée]e",
+        "pas de commande confirm[ée]e"
+      ]
+    },
+    {
+      "id": "Q-02-e",
+      "severite": "bloquant",
+      "type": "absent",
+      "description": "Le prix (75 € HT, sans remise) et la réserve de capacité portent sur des objets différents : les présenter comme une contradiction est une surinterprétation.",
+      "motifs": [
+        "contradiction[\\s\\S]{0,900}prix[^\\n]{0,60}(vs|versus|contre|face [àa])[^\\n]{0,60}capacit[ée]",
+        "prix ferme vs r[ée]serve de capacit[ée]"
+      ]
+    },
+    {
+      "id": "Q-02-f",
+      "severite": "avertissement",
+      "type": "absent",
+      "description": "« Commande de 40 pièces » (réunion) et « aucune commande confirmée » (atelier) ne sont pas contradictoires ; ne pas les classer comme contradiction même en les requalifiant ensuite en hypothèse.",
+      "motifs": [
+        "contradiction[\\s\\S]{0,600}existence de la commande",
+        "contradiction[\\s\\S]{0,600}commande[^\\n]{0,80}aucune commande confirm"
+      ]
+    },
+    {
+      "id": "Q-02-g",
+      "severite": "bloquant",
+      "type": "present",
+      "description": "Les deux sources sont citées par leur nom.",
+      "mode": "all",
+      "motifs": [
+        "atelier\\.md",
+        "reunion\\.md"
+      ]
+    }
+  ]
+}
