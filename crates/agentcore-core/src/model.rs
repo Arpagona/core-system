@@ -104,12 +104,12 @@ pub fn parse_response(body: &Value) -> Result<ModelResponse, ModelError> {
             });
         }
     }
-    let usage = body.get("usage");
+    let usage = body.get("usage").ok_or_else(|| bad("usage absent"))?;
     let get = |k: &str| {
         usage
-            .and_then(|u| u.get(k))
+            .get(k)
             .and_then(Value::as_u64)
-            .unwrap_or(0)
+            .ok_or_else(|| bad("usage invalide ou incomplet"))
     };
     let finish = match choice.get("finish_reason").and_then(Value::as_str) {
         Some("stop") => FinishReason::Stop,
@@ -121,8 +121,8 @@ pub fn parse_response(body: &Value) -> Result<ModelResponse, ModelError> {
         text,
         tool_calls,
         usage: Usage {
-            input_tokens: get("prompt_tokens"),
-            output_tokens: get("completion_tokens"),
+            input_tokens: get("prompt_tokens")?,
+            output_tokens: get("completion_tokens")?,
         },
         finish,
     })

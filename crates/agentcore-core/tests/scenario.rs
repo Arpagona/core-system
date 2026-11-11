@@ -632,27 +632,62 @@ fn caracterisation_timeout_apres_reception_rejoue_le_post() {
 }
 
 #[test]
-fn caracterisation_usage_absent_comptabilise_zero() {
-    let response = agentcore_core::model::parse_response(&json!({
-        "choices": [{"message": {"content": "réponse synthétique"}, "finish_reason": "stop"}]
-    }))
-    .unwrap();
-    assert_eq!(response.usage.input_tokens, 0);
-    assert_eq!(response.usage.output_tokens, 0);
-    let e = env();
-    let mut limits = Limits::default();
-    limits.max_iterations = 1;
-    let mut j = mission(&e, limits);
-    let (_, calls) = run(&e, &mut j, vec![Ok(response)]);
-    assert_eq!(calls, 1);
-    assert!(j.events.iter().any(|e| matches!(
-        e.kind,
-        EventKind::ModelReplied {
-            cost_microusd: 0,
-            ..
-        }
-    )));
-    let p = j.projection().unwrap();
-    assert_eq!(p.usage.total(), 0);
-    assert_eq!(p.cost_microusd, 0);
+fn usage_absent_ou_invalide_est_refuse() {
+    use agentcore_core::model::parse_response;
+    let base = json!({"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]});
+    let mut cases = vec![("absent", base.clone())];
+    for (name, usage) in [
+        ("null", json!(null)),
+        ("tableau", json!([])),
+        ("chaine", json!("usage")),
+        ("vide", json!({})),
+        ("sortie absente", json!({"prompt_tokens": 1})),
+        ("entrée absente", json!({"completion_tokens": 1})),
+        (
+            "entrée négative",
+            json!({"prompt_tokens": -1, "completion_tokens": 1}),
+        ),
+        (
+            "sortie négative",
+            json!({"prompt_tokens": 1, "completion_tokens": -1}),
+        ),
+        (
+            "chaine numérique",
+            json!({"prompt_tokens": "1", "completion_tokens": 1}),
+        ),
+        (
+            "flottant",
+            json!({"prompt_tokens": 1, "completion_tokens": 1.5}),
+        ),
+        (
+            "booléen",
+            json!({"prompt_tokens": true, "completion_tokens": 0}),
+        ),
+    ] {
+        let mut body = base.clone();
+        body["usage"] = usage;
+        cases.push((name, body));
+    }
+    for (name, body) in cases {
+        assert!(
+            matches!(
+                parse_response(&body),
+                Err(ModelError::InvalidResponse { .. })
+            ),
+            "cas {name}"
+        );
+    }
+}
+
+#[test]
+fn usage_explicite_zero_et_valeurs_positives_acceptes() {
+    for (input, output) in [(0, 0), (0, 1), (42, 0), (42, 7)] {
+        let body = json!({"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": input, "completion_tokens": output}});
+        let response = agentcore_core::model::parse_response(&body).unwrap();
+        assert_eq!(
+            (response.usage.input_tokens, response.usage.output_tokens),
+            (input, output)
+        );
+    }
 }
