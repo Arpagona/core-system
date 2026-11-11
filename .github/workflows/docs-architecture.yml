@@ -1,0 +1,20 @@
+name: Documentation architecture
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - run: rustup toolchain install 1.95.0 --profile minimal
+      - run: python3 scripts/architecture.py
+      - run: python3 tests/architecture.py
+      - run: python3 tests/guardian.py
+      - run: python3 tests/bench_verifier.py
+      - run: python3 scripts/build_docs.py

@@ -1,0 +1,23 @@
+name: Validation atelier
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Générer la vue privée des sources
+        run: python3 scripts/build_docs.py
+      - name: Vérifier les références requises
+        run: |
+          test -s site/index.html
+          test -s AGENTS.md
+          test -s docs/VISION.md
+          test -s docs/ARCHITECTURE.md
+          test -s docs/INTERFACES.md
+          git diff --check
+# Aucun Guardian IA. Le contrôle déterministe est dans guardian-review.yml ; aucun déploiement automatique.

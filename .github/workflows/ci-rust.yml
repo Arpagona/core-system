@@ -1,0 +1,37 @@
+name: Rust expérimental
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Toolchain exacte
+        run: rustup toolchain install 1.95.0 --profile minimal --component rustfmt --component clippy
+      - run: cargo fmt --all -- --check
+      - name: Récupérer les dépendances verrouillées (seule étape réseau)
+        run: cargo fetch --locked
+      - run: cargo check --workspace --all-targets --locked --offline
+      - run: cargo clippy --workspace --all-targets --locked --offline -- -D warnings
+      - run: cargo test --workspace --locked --offline
+      - run: python3 tests/rupture_contrat.py
+      - run: python3 scripts/security_checks.py
+      - name: Construire démonstrateur non productif
+        run: |
+          cargo build --package atelier-demo --release --locked --offline
+          mkdir -p demo-artifact
+          cp target/release/atelier-demo demo-artifact/
+          printf 'commit=%s\nversion=0.1.0\n' "$(git rev-parse HEAD)" > demo-artifact/VERSION.txt
+          (cd demo-artifact && sha256sum atelier-demo > SHA256SUMS)
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: atelier-demo-${{ github.event.pull_request.head.sha || github.sha }}
+          path: demo-artifact/
+          if-no-files-found: error
+          retention-days: 7

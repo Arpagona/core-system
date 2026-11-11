@@ -1,0 +1,30 @@
+# Configuration ARPAGONA Agent Core v0.1 — exemple sans secret.
+# Copiée en /etc/agentcore/config.toml (root:agentcore 0640) à la première installation.
+
+state_dir = "/var/lib/agentcore"
+
+# Modèle : décision de Thibaud du 10/11/2026 (ADR 0004).
+base_url = "https://opencode.ai/zen/go/v1"
+model = "deepseek-v4.1-flash"
+session_header = "x-opencode-session"
+
+# Clé : variable d'environnement, sinon fichier (root:agentcore 0640). Jamais dans Git.
+api_key_env = "OPENCODE_GO_API_KEY"
+api_key_file = "/etc/agentcore/api_key"
+
+# Tarifs servant à ESTIMER le coût (micro-dollars par million de tokens).
+# Valeurs prudentes (haut de fourchette DeepSeek Flash) ; ce n'est pas une facture.
+price_input_per_mtok_microusd = 300_000
+price_output_per_mtok_microusd = 1_200_000
+
+# Plafonds validés par Thibaud le 10/11/2026.
+max_cost_microusd = 500_000             # 0,50 $ par mission
+max_daily_cost_microusd = 20_000_000    # 20 $ sur 24 h glissantes, toutes missions
+
+# Limites par mission.
+max_iterations = 20
+max_tool_calls = 60
+max_wall_seconds = 600
+max_total_tokens = 200_000
+request_timeout_s = 120
+max_output_tokens = 8192

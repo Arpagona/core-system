@@ -1,0 +1,3 @@
+# Registre des modules expérimentaux
+
+Le registre structuré versionné [modules.json](modules.json) est la source normative des noms, responsabilités, dépendances et contrats de l'expérience, et non du produit. `python3 scripts/architecture.py` compare les noms, chemins et dépendances internes à `cargo metadata`, et vérifie les identifiants dans leurs sources et l'existence des tests. `python3 scripts/build_docs.py` génère une vue privée locale après ce contrôle. Les descriptions, la qualité et l'exécution des tests, l'absence de dépendances sémantiques et la cohérence métier ne sont pas prouvées. Les contrats produit restent des propositions non approuvées.

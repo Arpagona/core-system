@@ -1,0 +1,12 @@
+[package]
+name = "agentcore"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "CLI d'ARPAGONA Agent Core v0.1 (préversion)"
+publish = false
+
+[dependencies]
+agentcore-core = { path = "../agentcore-core" }
+agentcore-types = { path = "../agentcore-types" }
+serde_json = "1"
