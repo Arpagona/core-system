@@ -3,7 +3,8 @@
 **Date :** 10 novembre 2026
 **Statut :** principe (option A), fournisseur, modèle et plafonds décidés par Thibaud le 10/11/2026 ; relecture de Maël et Stéphane encore requise
 **Correction du 10/11/2026 :** la version initiale présentait à tort `opencode-go` / `deepseek-v4.1-flash` comme route approuvée.
-**Référence :** `docs/PLAN-NOYAU.md`, section 5.3
+**Actualisation du 11/11/2026 :** après la correction ci-dessus, Thibaud a choisi le 10/11 `opencode-go` / `deepseek-v4.1-flash` pour le défaut de la préversion et accepté 0,50 USD par mission et 20 USD par 24 heures ; l'implémentation utilise une fenêtre glissante. L'interprétation du terme « quotidien » reste à confirmer. Cette décision individuelle ne vaut pas accord collectif ; revue de Maël et Stéphane attendue.
+**Référence :** `docs/PLAN-NOYAU.md`, section 5.3 ; décision consignée dans la carte `t_066af63e`.
 
 ## Contexte
 
@@ -33,6 +34,8 @@ Option **A** sur le principe : API cloud OpenAI-compatible, configurable (`base_
 Précisions techniques constatées : la passerelle exige l'en-tête `x-opencode-session` (configurable, valeur = identifiant de mission). Le coût est **estimé** à partir de tarifs configurés prudents (0,30 $ / M tokens en entrée, 1,20 $ / M en sortie), pas facturé ; le contrôle est strict (coût engagé + pire cas de l'appel suivant). Clé : actuellement la clé opencode existante, copiée dans la VM de test hors dépôt ; une clé dédiée au projet reste recommandée.
 
 Cette décision reste à relire par Maël et Stéphane ; elle ne change pas le contrat `ModelPort`.
+
+**Précision 11/11 :** pour la préversion, route `opencode-go` / `deepseek-v4.1-flash` et plafonds ci-dessus choisis par Thibaud. Le plafond global de développement reste à préciser, ainsi que la confirmation de la fenêtre quotidienne. Revue collective toujours requise.
 
 ## Justification
 
