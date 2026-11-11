@@ -23,7 +23,7 @@ Le dépôt est privé : sans invitation, `git clone` échoue. C'est le comportem
 ## 3. Commandes vérifiées
 
 ```sh
-git clone --branch atelier/cadrage-v0-1 https://github.com/Arpagona/core-system.git
+git clone https://github.com/Arpagona/core-system.git   # branche par défaut : main (état intégré de l'atelier)
 cd core-system
 rustup show
 cargo fmt --all -- --check
