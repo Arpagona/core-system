@@ -73,17 +73,28 @@ after=$(ls "$STATE/missions" | wc -l)
 if [ $rc = 1 ] && [ "$before" = "$after" ]; then verdict R7-entree-illisible PASS "refus immédiat, aucune mission créée"
 else verdict R7-entree-illisible FAIL "code $rc, missions $before→$after"; fi
 
-# R8 — interruption brutale (kill -9) pendant un appel modèle, puis reprise sans double effet
+# R8 — interruption brutale (kill -9) pendant un appel modèle, puis reprise SANS REJEU (C-03, #22) :
+# l'appel interrompu n'a pas de résultat journalisé, sa facturation est inconnue ; la reprise doit
+# clore la mission en Failed (code 2) sans renvoyer la requête, ni ouvrir de nouvelle tentative.
 agentcore --config "$CONF" mission run --input "$DEMO" --goal "$GOAL" > r8a.out 2>&1 &
 pid=$!
-for _ in $(seq 1 120); do sleep 0.5; M8=$(mid r8a.out); [ -n "$M8" ] && grep -q '"model_called","iteration":3' "$(jr "$M8")" 2>/dev/null && break; done
+it=""
+for _ in $(seq 1 120); do sleep 0.5; M8=$(mid r8a.out); [ -n "$M8" ] && it=$(grep -o '"model_called","iteration":[0-9]*' "$(jr "$M8")" 2>/dev/null | tail -1 | grep -o '[0-9]*$') && [ "${it:-0}" -ge 3 ] && break; done
 kill -9 $pid 2>/dev/null; wait $pid 2>/dev/null
 st=$(agentcore --config "$CONF" mission status "$M8" | sed -n 's/^état *: //p')
+# appel en vol : le dernier événement modèle est un model_called sans réponse ni échec
+J8=$(jr "$M8")
+last=$(grep -o '"type":"model_\(called\|responded\|failed\)"' "$J8" | tail -1)
+calls_before=$(grep -c '"model_called"' "$J8")
 agentcore --config "$CONF" mission resume "$M8" > r8b.out 2>&1; rc=$?
-w=$(grep -c '"tool_started".*"tool":"write_file"' "$(jr "$M8")")
-if [ "$st" = Running ] && [ $rc = 0 ] && grep -q '"attempt":2' "$(jr "$M8")"; then
-    verdict R8-kill-puis-reprise PASS "état après kill : $st ; reprise Completed ; $w écriture(s) ($M8)"
-else verdict R8-kill-puis-reprise FAIL "état $st, code reprise $rc ($M8)"; fi
+calls_after=$(grep -c '"model_called"' "$J8")
+fin=$(agentcore --config "$CONF" mission status "$M8" | sed -n 's/^état *: //p')
+if [ "$last" != '"type":"model_called"' ]; then
+    verdict R8-kill-sans-rejeu NON-CONCLUANT "kill hors appel modèle en vol ($last, $M8)"
+elif [ "$st" = Running ] && [ $rc = 2 ] && [ "$fin" = Failed ] && [ "$calls_after" = "$calls_before" ] \
+    && grep -q 'facturation inconnue' "$J8" && ! grep -q '"attempt":2' "$J8"; then
+    verdict R8-kill-sans-rejeu PASS "Running → reprise Failed (facturation inconnue), $calls_after appel(s), aucun rejeu ($M8)"
+else verdict R8-kill-sans-rejeu FAIL "état $st → $fin, code reprise $rc, appels $calls_before → $calls_after ($M8)"; fi
 
 # R9 — coupure pendant une écriture : SIMULÉE par troncature du journal réel de R1 (copie)
 M9="${M1}-coupure"
