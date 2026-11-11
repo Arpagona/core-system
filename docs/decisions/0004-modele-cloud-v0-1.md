@@ -1,7 +1,7 @@
 # ADR 0004 — Fournisseur de modèle de la v0.1
 
 **Date :** 10 novembre 2026
-**Statut :** principe (option A) décidé par Thibaud ; fournisseur, modèle et budget **non décidés** ; relecture de Maël et Stéphane encore requise
+**Statut :** principe (option A), fournisseur, modèle et plafonds décidés par Thibaud le 10/11/2026 ; relecture de Maël et Stéphane encore requise
 **Correction du 10/11/2026 :** la version initiale présentait à tort `opencode-go` / `deepseek-v4.1-flash` comme route approuvée.
 **Référence :** `docs/PLAN-NOYAU.md`, section 5.3
 
@@ -21,7 +21,18 @@ Le noyau agentique sera installé sur une machine virtuelle du serveur Atlas. Le
 
 Option **A** sur le principe : API cloud OpenAI-compatible, configurable (`base_url`, `model`, `api_key_env`). La clé provient d'une variable d'environnement, jamais du dépôt.
 
-**Non décidé :** fournisseur, modèle précis, plafond de dépenses global et par mission. `opencode-go` n'est qu'un candidat parmi d'autres.
+**Décision complémentaire de Thibaud (10/11/2026, soir) :**
+
+| Élément | Valeur |
+|---|---|
+| Fournisseur / passerelle | `opencode-go` — `https://opencode.ai/zen/go/v1` (OpenAI-compatible) |
+| Modèle par défaut | `deepseek-v4.1-flash` |
+| Plafond par mission | 0,50 $ estimés (`max_cost_microusd = 500_000`) |
+| Plafond quotidien | 20 $ estimés sur 24 h glissantes, toutes missions (`max_daily_cost_microusd = 20_000_000`) — interprétation de « plafond quotidien » à confirmer |
+
+Précisions techniques constatées : la passerelle exige l'en-tête `x-opencode-session` (configurable, valeur = identifiant de mission). Le coût est **estimé** à partir de tarifs configurés prudents (0,30 $ / M tokens en entrée, 1,20 $ / M en sortie), pas facturé ; le contrôle est strict (coût engagé + pire cas de l'appel suivant). Clé : actuellement la clé opencode existante, copiée dans la VM de test hors dépôt ; une clé dédiée au projet reste recommandée.
+
+Cette décision reste à relire par Maël et Stéphane ; elle ne change pas le contrat `ModelPort`.
 
 ## Justification
 
