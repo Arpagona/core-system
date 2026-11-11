@@ -37,6 +37,13 @@ Cette décision reste à relire par Maël et Stéphane ; elle ne change pas le c
 
 **Précision 11/11 :** pour la préversion, route `opencode-go` / `deepseek-v4.1-flash` et plafonds ci-dessus choisis par Thibaud. Le plafond global de développement reste à préciser, ainsi que la confirmation de la fenêtre quotidienne. Revue collective toujours requise.
 
+## Actualisation du 11 novembre 2026 — Missions concurrentes
+
+Le chantier #24 sérialise les exécutions de la CLI qui utilisent le même répertoire d’état. Le verrou est pris avant le calcul du solde quotidien et conservé jusqu’à la fin de l’exécution. Si le verrou est occupé, la CLI renvoie un motif explicite et la commande peut être relancée. Les frais sans usage retourné et le coût du prochain appel restent des sujets distincts.
+
+Hermes Agent estime l’usage à partir des réponses reçues et affiche les quotas transmis par le fournisseur lorsqu’ils sont disponibles. Le verrou de la préversion répond au plafond local de Core System. [Comptabilisation des réponses Hermes](https://github.com/NousResearch/hermes-agent/blob/main/agent/turn_usage.py) · [Quotas fournisseur](https://github.com/NousResearch/hermes-agent/blob/main/website/docs/reference/slash-commands.md)
+
+
 ## Justification
 
 - décision explicite de Thibaud le 10/11/2026 ;
