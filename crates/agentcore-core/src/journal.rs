@@ -1,7 +1,7 @@
 //! Journal append-only d'une mission (C-02) : une ligne JSON par événement, fsync à chaque écriture.
 
 use agentcore_types::{
-    decode_journal, project, Event, EventKind, MissionId, Projection, EVENT_VERSION,
+    decode_journal, project, DecodedJournal, Event, EventKind, MissionId, Projection, EVENT_VERSION,
 };
 use std::fs::{self, File, OpenOptions};
 use std::io::Write;
@@ -48,12 +48,28 @@ pub fn mission_dir(state_dir: &Path, id: &MissionId) -> PathBuf {
     state_dir.join("missions").join(&id.0)
 }
 
+fn decode_bytes(bytes: &[u8]) -> Result<(DecodedJournal, usize), StoreError> {
+    let tail_start = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
+    let (text, split_character) = match std::str::from_utf8(bytes) {
+        Ok(text) => (text, false),
+        Err(error) if error.error_len().is_none() && error.valid_up_to() >= tail_start => (
+            std::str::from_utf8(&bytes[..tail_start])
+                .map_err(|e| StoreError::Journal(format!("UTF-8 invalide : {e}")))?,
+            true,
+        ),
+        Err(error) => return Err(StoreError::Journal(format!("UTF-8 invalide : {error}"))),
+    };
+    let mut decoded = decode_journal(text).map_err(|e| StoreError::Journal(format!("{e:?}")))?;
+    decoded.truncated_tail |= split_character;
+    Ok((decoded, tail_start))
+}
+
 /// Lecture seule : événements et projection.
 pub fn load(dir: &Path) -> Result<(Vec<Event>, Projection, bool), StoreError> {
     let path = dir.join("journal.jsonl");
-    let text = fs::read_to_string(&path)
-        .map_err(|e| StoreError::NotFound(format!("{} ({e})", path.display())))?;
-    let decoded = decode_journal(&text).map_err(|e| StoreError::Journal(format!("{e:?}")))?;
+    let bytes =
+        fs::read(&path).map_err(|e| StoreError::NotFound(format!("{} ({e})", path.display())))?;
+    let (decoded, _) = decode_bytes(&bytes)?;
     let proj = project(&decoded.events).map_err(|e| StoreError::Journal(format!("{e:?}")))?;
     Ok((decoded.events, proj, decoded.truncated_tail))
 }
@@ -122,17 +138,16 @@ impl Journal {
         }
         let lk = lock(&dir)?;
         let path = dir.join("journal.jsonl");
-        let text = fs::read_to_string(&path)?;
-        let decoded = decode_journal(&text).map_err(|e| StoreError::Journal(format!("{e:?}")))?;
+        let bytes = fs::read(&path)?;
+        let (decoded, tail_start) = decode_bytes(&bytes)?;
         if decoded.truncated_tail {
             // Conserve la trace de la ligne tronquée hors du journal, puis la retire.
-            let keep = text.rfind('\n').map(|i| i + 1).unwrap_or(0);
             fs::write(
                 dir.join(format!("journal.truncated.{}", now_ms())),
-                &text[keep..],
+                &bytes[tail_start..],
             )?;
             let f = OpenOptions::new().write(true).open(&path)?;
-            f.set_len(keep as u64)?;
+            f.set_len(tail_start as u64)?;
             f.sync_all()?;
         }
         let file = OpenOptions::new().append(true).open(&path)?;

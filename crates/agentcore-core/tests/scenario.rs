@@ -451,6 +451,66 @@ fn interruption_pendant_ecriture_incertaine_sans_rejeu() {
 }
 
 #[test]
+fn reprise_apres_coupure_d_un_caractere_utf8() {
+    let e = env();
+    let j = mission(&e, Limits::default());
+    let id = id_of(&j);
+    let dir = j.dir.clone();
+    drop(j);
+
+    let path = dir.join("journal.jsonl");
+    let original = std::fs::read(&path).unwrap();
+    let fragment = b"{\"text\":\"\xc3";
+    std::fs::write(&path, [original.as_slice(), fragment].concat()).unwrap();
+
+    let (_, projection, truncated) = journal::load(&dir).unwrap();
+    assert!(truncated);
+    assert_eq!(projection.last_seq, 1);
+    let mut j = Journal::reopen(&e.state, &id).unwrap();
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+    let archive = dir
+        .read_dir()
+        .unwrap()
+        .map(|entry| entry.unwrap())
+        .find(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("journal.truncated.")
+        })
+        .unwrap();
+    assert_eq!(std::fs::read(archive.path()).unwrap(), fragment);
+    j.append(EventKind::MissionStarted { attempt: 1 }).unwrap();
+    let (_, projection, truncated) = journal::load(&dir).unwrap();
+    assert!(!truncated);
+    assert_eq!(projection.last_seq, 2);
+}
+
+#[test]
+fn ligne_complete_utf8_invalide_bloque_la_reprise() {
+    let e = env();
+    let j = mission(&e, Limits::default());
+    let id = id_of(&j);
+    let dir = j.dir.clone();
+    drop(j);
+
+    let path = dir.join("journal.jsonl");
+    let mut original = std::fs::read(&path).unwrap();
+    original.extend_from_slice(b"{\"text\":\"\xc3\n");
+    std::fs::write(&path, &original).unwrap();
+
+    assert!(matches!(
+        journal::load(&dir),
+        Err(journal::StoreError::Journal(_))
+    ));
+    assert!(matches!(
+        Journal::reopen(&e.state, &id),
+        Err(journal::StoreError::Journal(_))
+    ));
+    assert_eq!(std::fs::read(&path).unwrap(), original);
+}
+
+#[test]
 fn interruption_pendant_lecture_rejouee() {
     let e = env();
     let mut j = mission(&e, Limits::default());
