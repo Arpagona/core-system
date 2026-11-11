@@ -210,9 +210,26 @@ class Console(BaseHTTPRequestHandler):
         g["status"] = "sain" if healthy else "à vérifier"
         return g
 
+    def recette_ids(self):
+        """Missions créées par la recette : identifiants cités dans ~/recette/*/ (sorties et verdicts)."""
+        rdir = Path(self.server.recette_dir).expanduser()
+        files = sorted(rdir.glob("*/*.out")) + sorted(rdir.glob("*/verdicts.txt")) if rdir.is_dir() else []
+        key = tuple((str(f), f.stat().st_mtime_ns) for f in files)
+        if key != self.server.recette_cache[0]:
+            ids = set()
+            for f in files:
+                ids.update(re.findall(ID, f.read_text(errors="replace")))
+            self.server.recette_cache = (key, ids)
+        return self.server.recette_cache[1]
+
     def overview(self):
         version = self.version()
         missions = self.cli_json("mission", "list", "--json")
+        recette = self.recette_ids()
+        for m in missions:
+            base = re.match(r"m-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}", m["id"])
+            if m["id"] in recette or (base and base.group(0) != m["id"]):
+                m["origin"] = "recette" if m["id"] in recette or (base and base.group(0) in recette) else "test"
         validations = []
         for m in missions:
             if m.get("state") == "uncertain":
@@ -345,6 +362,7 @@ def main():
         server.recette_dir = args.recette_dir
         server.cpu = Cpu()
         server.children = []
+        server.recette_cache = ((), set())
         print(f"Console Agent Core · http://127.0.0.1:{server.server_port}", flush=True)
         print(f"Dossiers autorisés pour lancer : {', '.join(inputs) or 'aucun'}", flush=True)
         server.serve_forever()

@@ -30,6 +30,13 @@ else
     install -m 0644 "$HERE/config.example.toml" "$REL/config.example.toml"
 fi
 install -d -m 0750 -o "$USER_NAME" -g "$USER_NAME" /var/lib/agentcore
+if [ -f "$HERE/agentcore-console.service" ] && command -v systemctl >/dev/null 2>&1; then
+    install -m 0644 "$HERE/agentcore-console.service" /etc/systemd/system/agentcore-console.service
+    systemctl daemon-reload
+    systemctl enable agentcore-console.service >/dev/null 2>&1
+    systemctl restart agentcore-console.service
+    echo "console : $(systemctl is-active agentcore-console.service) (127.0.0.1:8765, tunnel SSH)"
+fi
 [ -s /etc/agentcore/api_key ] || echo "ATTENTION : /etc/agentcore/api_key absent ou vide (root:$USER_NAME 0640)"
 echo "installé : $VERSION ; sauvegarde : /var/backups/agentcore/avant-$VERSION-$TS.tar.gz"
 /usr/local/bin/agentcore version
