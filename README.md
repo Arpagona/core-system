@@ -20,7 +20,7 @@ Socle agentique réutilisable en Rust, organisé par responsabilités fonctionne
 
 ## État
 
-Cadrage initial, pas de moteur fonctionnel. L'architecture doit être relue à trois avant les développements qui en dépendent. Aucun déploiement de production autorisé par ce dépôt.
+Préversion expérimentale CLI : une mission de synthèse synthétique a été exécutée avec le modèle configuré dans la VM de test ; ce n'est ni une réception collective ni une autorisation de production. Les contrats restent proposés et attendent les accords de Maël et Stéphane. Le plan M0–M6 décrit des étapes et intentions, pas des capacités déjà livrées ; il ne faut pas assimiler ce prototype CLI à une plateforme complète. Voir [rapport de préversion](docs/RAPPORT-V0.1-PREVERSION.md) et [pistes futures](docs/ROADMAP-CLI-WEB-MULTIAGENT.md). Aucun déploiement de production autorisé par ce dépôt.
 
 Le dépôt est privé. La publication open source n'est pas décidée. La licence Apache-2.0 du commit initial reste présente dans l'historique ; son retrait de l'arbre courant ne révoque aucun droit déjà accordé. Toute future politique de licence nécessite une décision collective.
 

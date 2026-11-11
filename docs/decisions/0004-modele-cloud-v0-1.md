@@ -1,9 +1,10 @@
 # ADR 0004 — Fournisseur de modèle de la v0.1
 
 **Date :** 10 novembre 2026
-**Statut :** principe (option A) décidé par Thibaud ; fournisseur, modèle et budget **non décidés** ; relecture de Maël et Stéphane encore requise
+**Statut :** option A et route de préversion choisies par Thibaud ; relecture de Maël et Stéphane encore requise
 **Correction du 10/11/2026 :** la version initiale présentait à tort `opencode-go` / `deepseek-v4.1-flash` comme route approuvée.
-**Référence :** `docs/PLAN-NOYAU.md`, section 5.3
+**Actualisation du 11/11/2026 :** après la correction ci-dessus, Thibaud a choisi le 10/11 `opencode-go` / `deepseek-v4.1-flash` pour le défaut de la préversion et accepté 0,50 USD par mission et 20 USD par 24 heures ; l'implémentation utilise une fenêtre glissante. L'interprétation du terme « quotidien » reste à confirmer. Cette décision individuelle ne vaut pas accord collectif ; revue de Maël et Stéphane attendue.
+**Référence :** `docs/PLAN-NOYAU.md`, section 5.3 ; décision consignée dans la carte `t_066af63e`.
 
 ## Contexte
 
@@ -21,7 +22,7 @@ Le noyau agentique sera installé sur une machine virtuelle du serveur Atlas. Le
 
 Option **A** sur le principe : API cloud OpenAI-compatible, configurable (`base_url`, `model`, `api_key_env`). La clé provient d'une variable d'environnement, jamais du dépôt.
 
-**Non décidé :** fournisseur, modèle précis, plafond de dépenses global et par mission. `opencode-go` n'est qu'un candidat parmi d'autres.
+**Précision 11/11 :** pour la préversion, route `opencode-go` / `deepseek-v4.1-flash` et plafonds ci-dessus choisis par Thibaud. Le plafond global de développement reste à préciser, ainsi que la confirmation de la fenêtre quotidienne. Revue collective toujours requise.
 
 ## Justification
 
