@@ -4,7 +4,7 @@
 **Version :** 0.1 — proposition de Thibaud
 **Date :** 10 novembre 2026
 **Statut :** proposition à valider à trois (Thibaud, Maël, Stéphane) avant tout développement dépendant des contrats
-**Documents liés :** `ARP-DEV-CDC-001` v1.0 (atelier), cadrage Atelier v0.1, `docs/ARCHITECTURE.md`, `docs/INTERFACES.md`
+**Documents liés :** `ARP-DEV-CDC-001` v1.1 (atelier ; v1.0 conservée), cadrage Atelier v0.1, `docs/ARCHITECTURE.md`, `docs/INTERFACES.md`
 
 ---
 
@@ -37,6 +37,8 @@ Deux composants livrables :
 ### Explicitement exclu de la v0.1
 
 Interface graphique, multi-utilisateur, multi-client, base vectorielle/RAG, MCP, navigateur automatisé, voix, auto-modification, place de marché de compétences, orchestration multi-agents, application mobile, connecteurs CAO/PDM/ERP.
+
+**Précision du 11/11/2026 (ADR 0006, CDC v1.1 §16) :** l'auto-modification reste exclue de la v0.1. La *mesure* de qualité et de coût (banc `bench/`, signaux C-10, anneau 0) est admise dès la v0.1 comme outillage ; adaptation (anneau 1) et évolution du code (anneau 2) sont des jalons ultérieurs conditionnés à la réception de la v0.1.
 
 **Règle de discipline :** toute idée hors périmètre part en annexe « v0.2+ », jamais dans la branche courante. C'est la leçon directe de GONA Core, où l'élargissement du cahier des charges a coûté plusieurs jours pour un usage non démontré.
 

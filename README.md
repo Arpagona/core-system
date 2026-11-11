@@ -16,6 +16,8 @@ Socle agentique réutilisable en Rust, organisé par responsabilités fonctionne
 - [Rapport de recette et garanties réelles](docs/RAPPORT_RECETTE.md)
 - [Guide nouveau poste](docs/GUIDE_ONBOARDING.md) et [guide nouvelle tâche](docs/GUIDE_NOUVELLE_TACHE.md)
 - [Procédure de test et de retour arrière](docs/DEPLOY_TEST.md) — préparation, non exécutée
+- [Cahier des charges de l'atelier, v1.1](docs/ARP-DEV-CDC-001-v1.1.md) (v1.0 conservée) et [plan du noyau](docs/PLAN-NOYAU.md)
+- [Contrats M0](docs/contrats/M0-CONTRATS.md) et [contrat C-10 — amélioration continue](docs/contrats/C-10-BOUCLE-AMELIORATION.md) ; [banc de régression](bench/README.md)
 - [Décisions](docs/decisions/)
 
 ## État

@@ -1,4 +1,30 @@
-# État de l'atelier — 10 novembre 2026
+# État de l'atelier — 11 novembre 2026
+
+## Vérifié le 11 novembre 2026
+
+- **Préversion v0.1** (PR [#14](https://github.com/Arpagona/core-system/pull/14), branche `spike/v0.1-noyau`) installée dans la VM `agentcore-dev` ; recette 11 PASS, 27 tests Rust verts ; **réception non prononcée** (accord Maël/Stéphane manquant sur les contrats M0).
+- **Deux livrables réels défectueux** malgré une vérification structurelle « ok » : réduction « 90 % » au lieu de 60 % (mission du 10/11) ; contradictions affirmées sans preuve (mission du 11/11). La vérification C-06 ne juge pas la qualité.
+- **Trois défauts hauts ouverts** (revue indépendante du 11/11) : appel modèle incertain potentiellement rejoué et facturé ; plafond financier « strict » et quotidien non garantis ; fenêtre TOCTOU du confinement fichiers. PR [#17](https://github.com/Arpagona/core-system/pull/17) corrige partiellement le parsing d'usage, pas le plafond.
+- **Sécurité opérationnelle VM** : archives `/var/backups/agentcore/avant-*.tar.gz` lisibles localement et contenant la clé API ; décision humaine requise (restriction + rotation). Aucune permission modifiée.
+- PR ouvertes, aucune fusionnée : #1 cadrage, #6 démonstration rupture, #11 recette lot 3, #12 plan noyau, #13 contrats M0, #14 préversion v0.1, #16 documentation CLI, #17 usage modèle, **#18 C-10 / banc**. Issues ouvertes : #2, #3, #7, #8, #9, #10, #15.
+
+## Décision du 11 novembre 2026 — amélioration continue par anneaux
+
+Thibaud demande une capacité d'auto-amélioration récursive du noyau. Décision retenue : **ADR 0006** (`docs/decisions/0006-boucle-amelioration-anneaux.md`), contrat **C-10** (`docs/contrats/C-10-BOUCLE-AMELIORATION.md`), cahier des charges **v1.1** (`docs/ARP-DEV-CDC-001-v1.1.md`, §16).
+
+- **Anneau 0 — observer** (livré en proposition, PR [#18](https://github.com/Arpagona/core-system/pull/18)) : `bench/` avec 2 cas issus des livrables défectueux, attendus scellés par empreinte, vérificateur hors ligne, historiques en FAIL, oracles en PASS, tests négatifs dans le workflow `docs-architecture`.
+- **Anneau 1 — adapter sans code** et **anneau 2 — faire évoluer le code par PR** : non commencés ; préalables en CDC v1.1 §16.3.
+- Suivi Kanban : ombrelle `t_c27d3c84` (tenant arpagona) pour décisions et jalons.
+
+## Prochaines décisions humaines (ordre proposé)
+
+1. Revue à trois de #13 (contrats M0) et #18 (ADR 0006, C-10, attendus du banc à confirmer).
+2. Ordre de correction des trois défauts hauts, avant tout anneau 1.
+3. Points ouverts inchangés : organisation/accès (#7), protection de `main` (#8), serveur de test (#9), licence (#10), restriction des archives VM.
+
+---
+
+# État de l'atelier — 10 novembre 2026 (historique)
 
 ## Vérifié lors de l'adaptation
 
