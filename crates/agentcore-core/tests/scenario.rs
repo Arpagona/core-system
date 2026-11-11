@@ -684,3 +684,17 @@ fn budget_reconcilie_une_reponse_et_conserve_un_appel_sans_usage() {
     );
     assert_eq!(agentcore_core::spent_since(&e.state, u64::MAX), 0);
 }
+
+#[test]
+fn consigne_systeme_impose_le_francais() {
+    let e = env();
+    let j = mission(&e, Limits::default());
+    let spec = j.projection().unwrap().spec.unwrap();
+    let messages = agentcore_core::runner::build_messages(&spec, &[]);
+    let system = messages[0].content.clone().unwrap_or_default();
+    assert_eq!(messages[0].role, Role::System);
+    assert!(
+        system.contains("Langue : rédige en français"),
+        "règle de langue absente de la consigne système"
+    );
+}
