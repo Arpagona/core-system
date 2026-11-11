@@ -6,7 +6,8 @@ use agentcore_core::policy::DefaultPolicy;
 use agentcore_core::runner::{RunConfig, Runner};
 use agentcore_core::{report_json, Config, COMMIT, VERSION};
 use agentcore_types::*;
-use std::path::PathBuf;
+use std::fs::{self, File, OpenOptions, TryLockError};
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 /// Écrit sur la sortie standard ; un tube fermé (`| head`) termine proprement au lieu de paniquer.
@@ -169,6 +170,27 @@ fn print_report(cfg: &Config, id: &MissionId) -> Result<MissionState, String> {
     Ok(proj.state)
 }
 
+// Le solde quotidien est calculé et consommé sous le même verrou interprocessus.
+fn lock_daily_budget(state_dir: &Path) -> Result<File, String> {
+    let path = state_dir.join("daily-budget.lock");
+    let open = || -> std::io::Result<File> {
+        fs::create_dir_all(state_dir)?;
+        OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(&path)
+    };
+    let file = open().map_err(|e| format!("verrou du budget quotidien : {e}"))?;
+    match file.try_lock() {
+        Ok(()) => Ok(file),
+        Err(TryLockError::WouldBlock) => {
+            Err("budget quotidien utilisé par une autre mission. Relancer après sa fin.".into())
+        }
+        Err(TryLockError::Error(e)) => Err(format!("verrou du budget quotidien : {e}")),
+    }
+}
+
 fn daily_remaining(cfg: &Config) -> Result<u64, String> {
     let since = agentcore_core::journal::now_ms().saturating_sub(24 * 3600 * 1000);
     let spent = agentcore_core::spent_since(&cfg.state_dir, since);
@@ -261,11 +283,14 @@ fn main() -> ExitCode {
             if !rest.is_empty() {
                 return fail(format!("arguments inattendus : {rest:?}"));
             }
-            // Vérifier configuration et budget quotidien AVANT de créer la mission.
-            if let Err(e) = model_of(&cfg, None)
-                .map(|_| ())
-                .and_then(|_| daily_remaining(&cfg).map(|_| ()))
-            {
+            if let Err(e) = model_of(&cfg, None) {
+                return fail(e);
+            }
+            let _budget_lock = match lock_daily_budget(&cfg.state_dir) {
+                Ok(lock) => lock,
+                Err(e) => return fail(e),
+            };
+            if let Err(e) = daily_remaining(&cfg) {
                 return fail(e);
             }
             let mut j = match agentcore_core::create_mission(
@@ -297,6 +322,10 @@ fn main() -> ExitCode {
         "resume" => {
             let Some(id) = id_arg(&rest) else {
                 return fail("ID requis");
+            };
+            let _budget_lock = match lock_daily_budget(&cfg.state_dir) {
+                Ok(lock) => lock,
+                Err(e) => return fail(e),
             };
             let mut j = match Journal::reopen(&cfg.state_dir, &id) {
                 Ok(j) => j,
@@ -438,5 +467,25 @@ fn main() -> ExitCode {
             }
         }
         _ => fail(format!("sous-commande inconnue « {sub} »\n\n{USAGE}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_exclusif_par_repertoire_et_libere_en_fin_execution() {
+        let root = std::env::temp_dir().join(agentcore_core::new_mission_id().0);
+        let first = root.join("first");
+        let second = root.join("second");
+        let lock = lock_daily_budget(&first).unwrap();
+        assert!(lock_daily_budget(&first)
+            .unwrap_err()
+            .contains("utilisé par une autre mission"));
+        assert!(lock_daily_budget(&second).is_ok());
+        drop(lock);
+        assert!(lock_daily_budget(&first).is_ok());
+        fs::remove_dir_all(root).unwrap();
     }
 }
