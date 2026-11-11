@@ -139,6 +139,13 @@ fn print_report(cfg: &Config, id: &MissionId) -> Result<MissionState, String> {
         proj.usage.output_tokens,
         proj.cost_microusd as f64 / 1e6
     );
+    if r["cost_incomplete"].as_bool() == Some(true) {
+        out!(
+            "coût incomplet : {} appel(s) sans usage, {:.4} $ réservés avant envoi",
+            r["unreported_model_calls"].as_u64().unwrap_or(0),
+            r["reserved_cost_usd"].as_f64().unwrap_or(0.0)
+        );
+    }
     if let Some(d) = r
         .get("denials")
         .and_then(|d| d.as_array())
@@ -167,7 +174,7 @@ fn daily_remaining(cfg: &Config) -> Result<u64, String> {
     let spent = agentcore_core::spent_since(&cfg.state_dir, since);
     if spent >= cfg.max_daily_cost_microusd {
         return Err(format!(
-            "plafond quotidien atteint : {:.4} $ dépensés sur 24 h pour {:.2} $ autorisés",
+            "plafond quotidien atteint : {:.4} $ comptabilisés sur 24 h pour {:.2} $ autorisés",
             spent as f64 / 1e6,
             cfg.max_daily_cost_microusd as f64 / 1e6
         ));

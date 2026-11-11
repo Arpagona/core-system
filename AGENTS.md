@@ -10,6 +10,8 @@ Lire README.md, docs/VISION.md, docs/ARCHITECTURE.md, docs/INTERFACES.md, CONTRI
 - Ne jamais approuver ou fusionner seul son propre travail. Guardian est un auditeur indépendant, non un substitut aux tests ou à l'accord humain.
 - Aucun secret ou donnée client dans Git, CI ou revue IA. Données synthétiques uniquement par défaut.
 - Aucun déploiement production, changement des règles de contrôle, attribution de permissions ou engagement externe sans autorisation humaine appropriée.
+- Pour le chantier actuel de fiabilisation du noyau, Thibaud pilote et arbitre seul.
+- Pour un choix technique courant, vérifier les sources officielles ou le code actuel de Hermes Agent et d’OpenClaw. Comparer leurs pratiques aux contraintes de Core System, choisir une approche, puis l’implémenter et la tester. Solliciter Thibaud pour les arbitrages stratégiques ou les changements qui dépassent le périmètre autorisé.
 - Ne pas importer de code de l'ancien Agent Core ou de GONA/Hermes sans demande et audit de provenance.
 
 ## Validation actuelle

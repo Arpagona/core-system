@@ -268,7 +268,7 @@ impl Runner<'_> {
             _ => None,
         });
         let interrupted_error = match last_model_event {
-            Some(EventKind::ModelCalled { iteration }) => {
+            Some(EventKind::ModelCalled { iteration, .. }) => {
                 let error = ModelError::Transport {
                     message: format!(
                         "appel modèle {iteration} interrompu sans résultat journalisé, facturation inconnue"
@@ -446,7 +446,10 @@ impl Runner<'_> {
                     .collect(),
                 max_output_tokens: self.cfg.max_output_tokens,
             };
-            j.append(EventKind::ModelCalled { iteration })?;
+            j.append(EventKind::ModelCalled {
+                iteration,
+                reserved_cost_microusd: Some(worst_next),
+            })?;
             match self.model.complete(&req) {
                 Err(error) => {
                     j.append(EventKind::ModelFailed {

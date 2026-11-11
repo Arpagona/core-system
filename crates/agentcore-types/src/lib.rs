@@ -327,6 +327,8 @@ pub enum EventKind {
     },
     ModelCalled {
         iteration: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reserved_cost_microusd: Option<u64>,
     },
     ModelReplied {
         iteration: u32,
@@ -495,7 +497,7 @@ pub fn project(events: &[Event]) -> Result<Projection, JournalError> {
                     p.state = MissionState::Running;
                 }
             }
-            EventKind::ModelCalled { iteration } => p.iterations = p.iterations.max(*iteration),
+            EventKind::ModelCalled { iteration, .. } => p.iterations = p.iterations.max(*iteration),
             EventKind::ModelReplied {
                 usage,
                 cost_microusd,

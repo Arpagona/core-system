@@ -112,7 +112,7 @@ pub enum ModelError { Timeout, Transport(String), Auth, RateLimited, Provider { 
 
 - Appel bloquant avec délai. Chaque itération déclenche au plus un envoi, même après une erreur transitoire. L’adaptateur HTTP ne suit pas les redirections.
 - À la reprise, un appel sans résultat journalisé clôture la mission en échec avec une cause indiquant que la facturation est inconnue. Si l’erreur a déjà été journalisée, la clôture conserve cette erreur.
-- Le coût journalisé reste fondé sur les réponses reçues. Une requête interrompue peut avoir été facturée par le fournisseur.
+- Avant l’envoi, le journal enregistre une réservation estimée. Le compteur des 24 heures la remplace par le coût calculé à partir de l’usage si une réponse est reçue. Il conserve la réservation dans la fenêtre de 24 heures si l’usage manque. Le rapport signale un coût incomplet et présente la réservation à part. Les anciens appels sans réservation restent lisibles et signalés comme incomplets lorsque leur résultat manque. L’adaptateur cloud requiert les compteurs d’entrée et de sortie, y compris lorsque le fournisseur indique explicitement zéro.
 - Une proposition du modèle **n'autorise rien** : elle passe toujours par C-05.
 - Adaptateurs v0.1 : OpenAI-compatible (`/chat/completions` avec `tools`), et `ScriptedModel` réservé aux tests.
 

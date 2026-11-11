@@ -57,3 +57,7 @@ Cette décision ne traite ni la confidentialité contractuelle avec le fournisse
 ## Actualisation du 11 novembre 2026 — Reprise des appels
 
 Le chantier #22, piloté par Thibaud, retire les nouvelles tentatives automatiques de la préversion. Une erreur réseau peut survenir après traitement de la requête par le fournisseur. En l’absence d’un résultat durable, la mission se termine avec une cause explicite et la facturation reste inconnue. Les délais restent bornés. C-03 décrit la règle de reprise et le format du journal reste compatible.
+
+## Actualisation du 11 novembre 2026 — Coût incomplet
+
+Le chantier #26 distingue le coût estimé sur l’usage reçu du montant réservé avant l’appel. Une réservation sans usage reste dans le budget des 24 heures, même après un redémarrage. Un total incomplet est affiché dans le rapport. Hermes Agent calcule ses estimations à partir de l’usage reçu et OpenClaw signale les totaux incomplets après une interruption. La réservation répond au plafond local de Core System. [Comptabilisation Hermes Agent](https://github.com/NousResearch/hermes-agent/blob/main/agent/turn_usage.py) · [Comptabilisation OpenClaw](https://docs.openclaw.ai/reference/token-use)

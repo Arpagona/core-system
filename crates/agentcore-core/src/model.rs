@@ -110,7 +110,7 @@ pub fn parse_response(body: &Value) -> Result<ModelResponse, ModelError> {
         usage
             .and_then(|u| u.get(k))
             .and_then(Value::as_u64)
-            .unwrap_or(0)
+            .ok_or_else(|| bad("usage fournisseur absent ou invalide"))
     };
     let finish = match choice.get("finish_reason").and_then(Value::as_str) {
         Some("stop") => FinishReason::Stop,
@@ -122,8 +122,8 @@ pub fn parse_response(body: &Value) -> Result<ModelResponse, ModelError> {
         text,
         tool_calls,
         usage: Usage {
-            input_tokens: get("prompt_tokens"),
-            output_tokens: get("completion_tokens"),
+            input_tokens: get("prompt_tokens")?,
+            output_tokens: get("completion_tokens")?,
         },
         finish,
     })

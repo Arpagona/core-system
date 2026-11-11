@@ -229,6 +229,7 @@ pub fn report_json(proj: &Projection, events: &[Event], model: &str) -> serde_js
         .collect();
     let first = events.first().map(|e| e.at_ms).unwrap_or(0);
     let last = events.last().map(|e| e.at_ms).unwrap_or(0);
+    let costs = model_costs(events.iter(), 0);
     serde_json::json!({
         "mission": spec.map(|s| s.id.0.clone()),
         "state": proj.state,
@@ -243,6 +244,9 @@ pub fn report_json(proj: &Projection, events: &[Event], model: &str) -> serde_js
         "uncertain": proj.uncertain.iter().map(|u| &u.call_id).collect::<Vec<_>>(),
         "usage": proj.usage,
         "estimated_cost_usd": proj.cost_microusd as f64 / 1e6,
+        "cost_incomplete": costs.unreported_calls > 0,
+        "unreported_model_calls": costs.unreported_calls,
+        "reserved_cost_usd": costs.reserved_microusd as f64 / 1e6,
         "elapsed_s": (last.saturating_sub(first)) as f64 / 1000.0,
         "model": model,
         "version": format!("{VERSION}+{COMMIT}"),
@@ -264,7 +268,7 @@ pub fn describe(k: &EventKind) -> String {
     match k {
         EventKind::MissionCreated { spec } => format!("mission créée : {}", cut(&spec.goal, 80)),
         EventKind::MissionStarted { attempt } => format!("exécution n° {attempt}"),
-        EventKind::ModelCalled { iteration } => format!("appel modèle n° {iteration}"),
+        EventKind::ModelCalled { iteration, .. } => format!("appel modèle n° {iteration}"),
         EventKind::ModelReplied {
             usage,
             tool_calls,
@@ -326,25 +330,58 @@ pub fn describe(k: &EventKind) -> String {
     }
 }
 
-/// Coût estimé dépensé depuis `since_ms`, toutes missions confondues (journaux lisibles uniquement).
+#[derive(Default)]
+struct ModelCosts {
+    reported_microusd: u64,
+    reserved_microusd: u64,
+    unreported_calls: usize,
+}
+
+fn model_costs<'a>(events: impl Iterator<Item = &'a Event>, since_ms: u64) -> ModelCosts {
+    let mut costs = ModelCosts::default();
+    let mut pending = std::collections::BTreeMap::new();
+    for event in events {
+        match &event.kind {
+            EventKind::ModelCalled {
+                iteration,
+                reserved_cost_microusd,
+            } if event.at_ms >= since_ms => {
+                pending.insert(*iteration, *reserved_cost_microusd);
+            }
+            EventKind::ModelReplied {
+                iteration,
+                cost_microusd,
+                ..
+            } => {
+                pending.remove(iteration);
+                if event.at_ms >= since_ms {
+                    costs.reported_microusd =
+                        costs.reported_microusd.saturating_add(*cost_microusd);
+                }
+            }
+            _ => {}
+        }
+    }
+    costs.unreported_calls = pending.len();
+    costs.reserved_microusd = pending.into_values().flatten().fold(0, u64::saturating_add);
+    costs
+}
+
+/// Coûts estimés sur usage reçu et réservations non rapprochées depuis `since_ms`.
 pub fn spent_since(state_dir: &Path, since_ms: u64) -> u64 {
     let Ok(rd) = std::fs::read_dir(state_dir.join("missions")) else {
         return 0;
     };
-    let mut total = 0;
-    for e in rd.flatten() {
-        let Ok(text) = std::fs::read_to_string(e.path().join("journal.jsonl")) else {
-            continue;
+    rd.flatten().fold(0u64, |total, entry| {
+        let Ok(bytes) = std::fs::read(entry.path().join("journal.jsonl")) else {
+            return total;
         };
-        for line in text.lines() {
-            if let Ok(ev) = serde_json::from_str::<Event>(line) {
-                if let EventKind::ModelReplied { cost_microusd, .. } = ev.kind {
-                    if ev.at_ms >= since_ms {
-                        total += cost_microusd;
-                    }
-                }
-            }
-        }
-    }
-    total
+        let events = bytes
+            .split(|&byte| byte == b'\n')
+            .filter_map(|line| serde_json::from_slice::<Event>(line).ok());
+        let costs = model_costs(events.collect::<Vec<_>>().iter(), since_ms);
+        total
+            .saturating_add(costs.reported_microusd)
+            .saturating_add(costs.reserved_microusd)
+    })
 }

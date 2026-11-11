@@ -269,7 +269,11 @@ fn reprise_d_un_appel_modele_interrompu_ou_en_echec() {
         let mut j = mission(&e, Limits::default());
         let id = id_of(&j);
         j.append(EventKind::MissionStarted { attempt: 1 }).unwrap();
-        j.append(EventKind::ModelCalled { iteration: 1 }).unwrap();
+        j.append(EventKind::ModelCalled {
+            iteration: 1,
+            reserved_cost_microusd: None,
+        })
+        .unwrap();
         if let Some(error) = &recorded_error {
             j.append(EventKind::ModelFailed {
                 iteration: 1,
@@ -300,6 +304,9 @@ fn reprise_d_un_appel_modele_interrompu_ou_en_echec() {
             })
             .collect();
         assert_eq!(failures, vec![(1, &expected)]);
+        let report = agentcore_core::report_json(&j.projection().unwrap(), &j.events, "test");
+        assert_eq!(report["cost_incomplete"], true);
+        assert_eq!(report["reserved_cost_usd"], 0.0);
         let events = j.events.len();
         assert_eq!(run(&e, &mut j, vec![]), (MissionState::Failed, 0));
         assert_eq!(j.events.len(), events);
@@ -576,4 +583,44 @@ fn plafond_quotidien_arrete_la_mission() {
         Some("plafond quotidien de dépenses atteint")
     );
     assert_eq!(agentcore_core::spent_since(&e.state, 0), 2400);
+}
+
+#[test]
+fn usage_absent_distinct_d_un_zero_explicite() {
+    let mut body = json!({"choices": [{"message": {"content": "réponse"}}]});
+    assert!(matches!(
+        agentcore_core::model::parse_response(&body),
+        Err(ModelError::InvalidResponse { .. })
+    ));
+    body["usage"] = json!({"prompt_tokens": 0, "completion_tokens": 0});
+    assert_eq!(
+        agentcore_core::model::parse_response(&body)
+            .unwrap()
+            .usage
+            .total(),
+        0
+    );
+}
+
+#[test]
+fn budget_reconcilie_une_reponse_et_conserve_un_appel_sans_usage() {
+    let e = env();
+    let mut replied = mission(&e, Limits::default());
+    run(&e, &mut replied, happy_script(&e));
+    let known_cost = replied.projection().unwrap().cost_microusd;
+    assert_eq!(known_cost, 4800);
+    assert_eq!(agentcore_core::spent_since(&e.state, 0), known_cost);
+
+    let mut failed = mission(&e, Limits::default());
+    run(&e, &mut failed, vec![Err(ModelError::Timeout)]);
+    let report = agentcore_core::report_json(&failed.projection().unwrap(), &failed.events, "test");
+    assert_eq!(report["cost_incomplete"], true);
+    assert_eq!(report["unreported_model_calls"], 1);
+    assert_eq!(report["estimated_cost_usd"], 0.0);
+    assert_eq!(report["reserved_cost_usd"], 0.011192);
+    assert_eq!(
+        agentcore_core::spent_since(&e.state, 0),
+        known_cost + 11_192
+    );
+    assert_eq!(agentcore_core::spent_since(&e.state, u64::MAX), 0);
 }
