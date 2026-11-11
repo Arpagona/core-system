@@ -25,7 +25,7 @@ const USAGE: &str = "agentcore — ARPAGONA Agent Core v0.1 (préversion)
 
 USAGE
   agentcore [--config FICHIER] mission run --input DOSSIER [--input DOSSIER…] --goal TEXTE [--deliverable synthese.md]
-  agentcore [--config FICHIER] mission list
+  agentcore [--config FICHIER] mission list [--json]
   agentcore [--config FICHIER] mission status ID
   agentcore [--config FICHIER] mission log ID
   agentcore [--config FICHIER] mission resume ID
@@ -344,6 +344,23 @@ fn main() -> ExitCode {
                 })
                 .unwrap_or_default();
             ids.sort();
+            if rest == ["--json"] {
+                let missions: Vec<_> = ids
+                    .iter()
+                    .rev()
+                    .map(|id| match journal::load(&dir.join(id)) {
+                        Ok((_, projection, truncated)) => serde_json::json!({
+                            "id": id,
+                            "state": projection.state,
+                            "goal": projection.spec.map(|spec| spec.goal),
+                            "truncated": truncated,
+                        }),
+                        Err(_) => serde_json::json!({"id": id, "state": "unreadable"}),
+                    })
+                    .collect();
+                out!("{}", serde_json::json!(missions));
+                return ExitCode::SUCCESS;
+            }
             for id in ids {
                 match journal::load(&dir.join(&id)) {
                     Ok((_, p, _)) => out!(

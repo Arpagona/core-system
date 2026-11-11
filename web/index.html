@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Missions · Arpagona Agent Core</title>
+  <link rel="stylesheet" href="/console.css">
+  <script defer src="/console.js"></script>
+</head>
+<body>
+  <header>
+    <strong>ARPAGONA<span>Agent Core</span></strong>
+    <p id="opencode" role="status">OpenCode · Vérification…</p>
+  </header>
+  <main>
+    <section aria-labelledby="title">
+      <div class="heading">
+        <h1 id="title">Missions</h1>
+        <button id="refresh" type="button">Actualiser</button>
+      </div>
+      <p id="status" role="status"></p>
+      <ul id="missions"></ul>
+    </section>
+    <section aria-labelledby="detail">
+      <h2 id="detail">Journal de mission</h2>
+      <pre id="journal" tabindex="0" aria-live="polite">Sélectionne une mission pour consulter son journal.</pre>
+    </section>
+  </main>
+</body>
+</html>
