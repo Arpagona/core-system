@@ -184,7 +184,6 @@ fn execute(cfg: &Config, j: &mut Journal) -> Result<MissionState, String> {
         price_output_per_mtok: cfg.price_output_per_mtok_microusd,
         max_output_tokens: cfg.max_output_tokens,
         daily_remaining_microusd: Some(remaining),
-        ..RunConfig::default()
     };
     let runner = Runner {
         model: &model,

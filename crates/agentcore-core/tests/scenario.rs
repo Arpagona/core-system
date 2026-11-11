@@ -102,7 +102,6 @@ fn run(
     let cfg = RunConfig {
         price_input_per_mtok: 1_000_000,
         price_output_per_mtok: 2_000_000,
-        retry_delays: vec![std::time::Duration::from_millis(1); 2],
         ..RunConfig::default()
     };
     let runner = Runner {
@@ -240,20 +239,71 @@ fn erreur_modele_echoue_sans_inventer_de_succes() {
 }
 
 #[test]
-fn erreur_transitoire_retentee_deux_fois_au_plus() {
-    let e = env();
-    let mut j = mission(&e, Limits::default());
-    let (state, calls) = run(
-        &e,
-        &mut j,
-        vec![
-            Err(ModelError::Timeout),
-            Err(ModelError::Timeout),
-            Err(ModelError::Timeout),
-        ],
-    );
-    assert_eq!(state, MissionState::Failed);
-    assert_eq!(calls, 3);
+fn erreur_modele_ne_declenche_pas_un_nouvel_appel() {
+    for error in [
+        ModelError::Timeout,
+        ModelError::Transport {
+            message: "connexion interrompue".into(),
+        },
+        ModelError::Provider {
+            status: 503,
+            message: "indisponible".into(),
+        },
+        ModelError::RateLimited,
+    ] {
+        let e = env();
+        let mut j = mission(&e, Limits::default());
+        let (state, calls) = run(&e, &mut j, vec![Err(error.clone())]);
+        assert_eq!((state, calls), (MissionState::Failed, 1));
+        assert_eq!(
+            j.projection().unwrap().reason,
+            Some(FailureReason::Model { error })
+        );
+    }
+}
+
+#[test]
+fn reprise_d_un_appel_modele_interrompu_ou_en_echec() {
+    for recorded_error in [None, Some(ModelError::Timeout)] {
+        let e = env();
+        let mut j = mission(&e, Limits::default());
+        let id = id_of(&j);
+        j.append(EventKind::MissionStarted { attempt: 1 }).unwrap();
+        j.append(EventKind::ModelCalled { iteration: 1 }).unwrap();
+        if let Some(error) = &recorded_error {
+            j.append(EventKind::ModelFailed {
+                iteration: 1,
+                error: error.clone(),
+            })
+            .unwrap();
+        }
+        drop(j);
+
+        let mut j = Journal::reopen(&e.state, &id).unwrap();
+        assert_eq!(run(&e, &mut j, vec![]), (MissionState::Failed, 0));
+        let expected = recorded_error.unwrap_or_else(|| ModelError::Transport {
+            message: "appel modèle 1 interrompu sans résultat journalisé, facturation inconnue"
+                .into(),
+        });
+        assert_eq!(
+            j.projection().unwrap().reason,
+            Some(FailureReason::Model {
+                error: expected.clone()
+            })
+        );
+        let failures: Vec<_> = j
+            .events
+            .iter()
+            .filter_map(|event| match &event.kind {
+                EventKind::ModelFailed { iteration, error } => Some((*iteration, error)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(failures, vec![(1, &expected)]);
+        let events = j.events.len();
+        assert_eq!(run(&e, &mut j, vec![]), (MissionState::Failed, 0));
+        assert_eq!(j.events.len(), events);
+    }
 }
 
 #[test]

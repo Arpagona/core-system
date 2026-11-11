@@ -5,14 +5,13 @@ use crate::verify::verify_deliverable;
 use agentcore_types::*;
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 pub struct RunConfig {
     /// Tarif d'entrée en micro-dollars par million de tokens.
     pub price_input_per_mtok: u64,
     pub price_output_per_mtok: u64,
     pub max_output_tokens: u32,
-    pub retry_delays: Vec<Duration>,
     /// Budget restant sur 24 h glissantes, toutes missions confondues (micro-dollars).
     pub daily_remaining_microusd: Option<u64>,
 }
@@ -23,7 +22,6 @@ impl Default for RunConfig {
             price_input_per_mtok: 0,
             price_output_per_mtok: 0,
             max_output_tokens: 4096,
-            retry_delays: vec![Duration::from_secs(2), Duration::from_secs(5)],
             daily_remaining_microusd: None,
         }
     }
@@ -263,6 +261,36 @@ impl Runner<'_> {
                 )),
             });
         }
+        let last_model_event = j.events.iter().rev().find_map(|event| match &event.kind {
+            kind @ (EventKind::ModelCalled { .. }
+            | EventKind::ModelReplied { .. }
+            | EventKind::ModelFailed { .. }) => Some(kind),
+            _ => None,
+        });
+        let interrupted_error = match last_model_event {
+            Some(EventKind::ModelCalled { iteration }) => {
+                let error = ModelError::Transport {
+                    message: format!(
+                        "appel modèle {iteration} interrompu sans résultat journalisé, facturation inconnue"
+                    ),
+                };
+                j.append(EventKind::ModelFailed {
+                    iteration: *iteration,
+                    error: error.clone(),
+                })?;
+                Some(error)
+            }
+            Some(EventKind::ModelFailed { error, .. }) => Some(error.clone()),
+            _ => None,
+        };
+        if let Some(error) = interrupted_error {
+            return self.end(
+                j,
+                MissionState::Failed,
+                Some(FailureReason::Model { error }),
+                None,
+            );
+        }
         let prior = prior_wall_ms(&j.events);
         j.append(EventKind::MissionStarted {
             attempt: p.attempts + 1,
@@ -406,7 +434,7 @@ impl Runner<'_> {
                     );
                 }
             }
-            // 3. Appel modèle avec nouvelles tentatives bornées.
+            // 3. Un seul envoi par appel modèle journalisé.
             let iteration = p.iterations + 1;
             let req = ModelRequest {
                 messages: build_messages(&spec, &j.events),
@@ -419,18 +447,7 @@ impl Runner<'_> {
                 max_output_tokens: self.cfg.max_output_tokens,
             };
             j.append(EventKind::ModelCalled { iteration })?;
-            let mut attempt = 0usize;
-            let resp = loop {
-                match self.model.complete(&req) {
-                    Ok(r) => break Ok(r),
-                    Err(e) if e.is_retryable() && attempt < self.cfg.retry_delays.len() => {
-                        std::thread::sleep(self.cfg.retry_delays[attempt]);
-                        attempt += 1;
-                    }
-                    Err(e) => break Err(e),
-                }
-            };
-            match resp {
+            match self.model.complete(&req) {
                 Err(error) => {
                     j.append(EventKind::ModelFailed {
                         iteration,

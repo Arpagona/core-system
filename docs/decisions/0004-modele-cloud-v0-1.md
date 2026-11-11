@@ -53,3 +53,7 @@ Cette décision reste à relire par Maël et Stéphane ; elle ne change pas le c
 ## Limites
 
 Cette décision ne traite ni la confidentialité contractuelle avec le fournisseur, ni l'hébergement, ni la conservation des données. Ces points restent hors périmètre de la v0.1 et devront être tranchés avant tout usage sur données client.
+
+## Actualisation du 11 novembre 2026 — Reprise des appels
+
+Le chantier #22, piloté par Thibaud, retire les nouvelles tentatives automatiques de la préversion. Une erreur réseau peut survenir après traitement de la requête par le fournisseur. En l’absence d’un résultat durable, la mission se termine avec une cause explicite et la facturation reste inconnue. Les délais restent bornés. C-03 décrit la règle de reprise et le format du journal reste compatible.

@@ -110,8 +110,9 @@ pub struct Usage { pub input_tokens: u64, pub output_tokens: u64 }
 pub enum ModelError { Timeout, Transport(String), Auth, RateLimited, Provider { status: u16, message: String }, InvalidResponse(String) }
 ```
 
-- Appel bloquant avec délai ; au plus **2 nouvelles tentatives** pour `Timeout`, `Transport`, `RateLimited` (attente croissante), **jamais** pour `Auth`, `Provider 4xx`, `InvalidResponse`.
-- Un appel modèle n'a pas d'effet externe : il peut être rejoué après crash (coût seulement, compté).
+- Appel bloquant avec délai. Chaque itération déclenche au plus un envoi, même après une erreur transitoire. L’adaptateur HTTP ne suit pas les redirections.
+- À la reprise, un appel sans résultat journalisé clôture la mission en échec avec une cause indiquant que la facturation est inconnue. Si l’erreur a déjà été journalisée, la clôture conserve cette erreur.
+- Le coût journalisé reste fondé sur les réponses reçues. Une requête interrompue peut avoir été facturée par le fournisseur.
 - Une proposition du modèle **n'autorise rien** : elle passe toujours par C-05.
 - Adaptateurs v0.1 : OpenAI-compatible (`/chat/completions` avec `tools`), et `ScriptedModel` réservé aux tests.
 

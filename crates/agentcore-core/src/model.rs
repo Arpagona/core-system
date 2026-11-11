@@ -28,6 +28,7 @@ impl OpenAiCompatible {
     ) -> Self {
         let agent: ureq::Agent = ureq::Agent::config_builder()
             .timeout_global(Some(Duration::from_secs(timeout_s)))
+            .max_redirects(0)
             .http_status_as_error(false)
             .build()
             .into();

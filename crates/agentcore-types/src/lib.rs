@@ -157,7 +157,7 @@ pub enum ModelError {
 }
 
 impl ModelError {
-    /// Seules les erreurs transitoires peuvent être retentées (au plus 2 fois).
+    /// Indique une erreur transitoire. Le noyau ne retente pas les appels modèle.
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
