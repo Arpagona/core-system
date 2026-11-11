@@ -327,10 +327,31 @@ function renderChat(d) {
   box.dataset.mission = d.mission;
 }
 
+let deliverableRequest = 0;
+async function openDeliverable(id) {
+  const request = ++deliverableRequest;
+  const dialog = $("#deliverable-dialog");
+  $("#deliverable-title").textContent = "Livrable";
+  $("#deliverable-text").textContent = "Chargement…";
+  if (!dialog.open) dialog.showModal();
+  try {
+    const file = await api(`/api/missions/${encodeURIComponent(id)}/deliverable`);
+    if (request !== deliverableRequest || !dialog.open) return;
+    $("#deliverable-title").textContent = file.name;
+    $("#deliverable-text").textContent = file.text;
+  } catch (error) {
+    if (request === deliverableRequest && dialog.open) $("#deliverable-text").textContent = error.message;
+  }
+}
+
 function actionBar(d, last) {
   const rep = d.report;
   const id = d.mission;
   const bar = h("div", { class: "actions" });
+  if (rep.state === "completed" && rep.verification?.ok) {
+    bar.append(h("button", { class: "btn good", type: "button", onclick: () => openDeliverable(id) },
+      "Ouvrir le livrable"));
+  }
   const spec = (d.events.find((e) => e.kind.type === "mission_created") || {}).kind;
   const goal = spec ? spec.spec.goal : "";
   const inputs = spec ? spec.spec.input_dirs || [] : [];
@@ -556,6 +577,7 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest("#input-pop, #input-pick")) $("#input-pop").hidden = true;
   if (!e.target.closest("#help-pop, #help")) { $("#help-pop").hidden = true; $("#help").setAttribute("aria-expanded", "false"); }
 });
+$("#deliverable-close").addEventListener("click", () => $("#deliverable-dialog").close());
 $("#bell").addEventListener("click", () => setView("validations"));
 $("#help").addEventListener("click", () => { const p = $("#help-pop"); p.hidden = !p.hidden; $("#help").setAttribute("aria-expanded", String(!p.hidden)); });
 $("#session-select").addEventListener("change", (e) => select(e.target.value));

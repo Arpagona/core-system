@@ -31,3 +31,9 @@ ssh -N -L 8765:127.0.0.1:8765 utilisateur@serveur
 ```
 
 Ouvrir ensuite [la console locale](http://127.0.0.1:8765/) dans Safari. La liste utilise les journaux existants. Cliquer sur une mission affiche ses événements. Le serveur HTTP est destiné aux essais sous un compte de confiance via le tunnel SSH.
+
+### Consulter un livrable
+
+Dans la session d’une mission terminée avec un livrable vérifié, choisir **Ouvrir le livrable**. Mission Control affiche le fichier UTF-8 en texte, y compris les éventuelles balises Markdown. Si le fichier est devenu illisible, a été déplacé ou a changé de taille, la console affiche un motif de refus. La vérification actuelle enregistre la taille et le résultat du contrôle structurel. Elle ne fournit pas d’empreinte du contenu.
+
+Vérifier l’API en local avec `python3 tests/web_deliverable.py`.

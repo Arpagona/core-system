@@ -7,6 +7,7 @@ local et du JSON ; le lancement n'accepte que des dossiers préautorisés au dé
 """
 
 import argparse
+from contextlib import ExitStack
 import hashlib
 import json
 import os
@@ -15,6 +16,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import stat
 import subprocess
 import threading
 import time
@@ -30,6 +32,8 @@ ASSETS = {
 }
 ID = r"m-[0-9]{8}-[0-9]{6}-[0-9a-f]{6}(?:-[a-z0-9-]+)?"
 MISSION = re.compile(rf"/api/missions/({ID})")
+DELIVERABLE = re.compile(rf"/api/missions/({ID})/deliverable")
+MAX_DELIVERABLE = 200_000
 ACTION = re.compile(rf"/api/missions/({ID})/(cancel|resume|resolve)")
 CALL_ID = re.compile(r"[A-Za-z0-9_.:-]{1,128}")
 STARTED = re.compile(rf"^(?:mission|reprise de) ({ID})\b")
@@ -45,6 +49,34 @@ def trim(value, limit=MAX_TEXT):
     if isinstance(value, dict):
         return {k: trim(v, limit) for k, v in value.items()}
     return value
+
+
+def read_deliverable(state_dir, mission, verification):
+    relative = Path(verification["path"])
+    expected_size = verification["bytes"]
+    if (relative.is_absolute() or not relative.parts or ".." in relative.parts
+            or not 0 < expected_size <= MAX_DELIVERABLE):
+        raise ValueError("Livrable hors périmètre ou taille invalide.")
+
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    # Chaque ouverture reste ancrée dans le répertoire déjà ouvert.
+    with ExitStack() as stack:
+        directory = os.open(state_dir, directory_flags)
+        stack.callback(os.close, directory)
+        for component in ("missions", mission, "workspace", *relative.parts[:-1]):
+            directory = os.open(component, directory_flags, dir_fd=directory)
+            stack.callback(os.close, directory)
+        descriptor = os.open(relative.name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                             dir_fd=directory)
+        with os.fdopen(descriptor, "rb") as source:
+            metadata = os.fstat(source.fileno())
+            if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                    or metadata.st_size != expected_size):
+                raise ValueError("Le fichier ne correspond plus au livrable vérifié.")
+            content = source.read(MAX_DELIVERABLE + 1)
+        if len(content) != expected_size:
+            raise ValueError("Le fichier a changé depuis sa vérification.")
+    return {"name": relative.name, "text": content.decode("utf-8")}
 
 
 class Cpu:
@@ -160,6 +192,10 @@ class Console(BaseHTTPRequestHandler):
             if self.path == "/api/overview":
                 self.json_reply(200, self.overview())
                 return
+            deliverable = DELIVERABLE.fullmatch(self.path)
+            if deliverable:
+                self.deliverable(deliverable.group(1))
+                return
             m = MISSION.fullmatch(self.path)
             if m:
                 data = self.cli_json("mission", "log", m.group(1), "--json")
@@ -170,6 +206,23 @@ class Console(BaseHTTPRequestHandler):
             self.json_reply(503, {"error": f"Agent Core indisponible : {e}"})
             return
         self.json_reply(404, {"error": "Page introuvable."})
+
+    def deliverable(self, mission):
+        report = self.cli_json("mission", "log", mission, "--json")["report"]
+        verification = report.get("verification") or {}
+        if report.get("state") != "completed" or verification.get("ok") is not True:
+            self.json_reply(409, {"error": "Cette mission n’a pas de livrable vérifié."})
+            return
+        state_dir = self.version().get("état")
+        if not state_dir:
+            self.json_reply(503, {"error": "Le répertoire d’état est indisponible."})
+            return
+        try:
+            data = read_deliverable(Path(state_dir).resolve(), mission, verification)
+        except (OSError, ValueError, TypeError, KeyError):
+            self.json_reply(409, {"error": "Le livrable vérifié est absent, illisible ou a changé."})
+            return
+        self.json_reply(200, data)
 
     def version(self):
         r = self.cli("version", timeout=5)
