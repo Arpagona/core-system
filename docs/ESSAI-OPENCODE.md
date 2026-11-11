@@ -25,3 +25,14 @@ ssh -N -L 8766:127.0.0.1:8766 utilisateur@serveur
 Ouvrir [Mission Control](http://127.0.0.1:8766/), puis **OpenCode** et **Lancer l’essai**. Le processus démarre avec un espace de travail éphémère, des outils OpenCode refusés et des montages système en lecture seule. Il utilise le réseau de la VM pour joindre le fournisseur. Réserver cette VM aux essais et utiliser un compte de test dédié. Le service Mission Control existant peut continuer à tourner sur son port habituel. L’unité systemd du serveur de test interdit les espaces de noms nécessaires à bubblewrap et ne convient donc pas à cet essai.
 
 Le prochain jalon consistera à remplacer cet exercice fixe par une copie de dépôt de test autorisée, puis à recueillir un patch et les sorties d’une commande de test définie par l’opérateur.
+
+## Vérification reproductible
+
+Le test local utilise le vrai binaire OpenCode et un serveur fournisseur fictif. Il vérifie que l’action HTTP renvoie un diff correct, que les trois vérifications passent et qu’un seul appel modèle part sur le scénario nominal, sans outil déclaré. La console donne un titre fixe à la session pour éviter l’appel auxiliaire de génération de titre.
+
+```sh
+python3 tests/opencode_lab.py
+python3 tests/opencode_smoke.py /chemin/vers/opencode
+```
+
+Essai vérifié avec OpenCode 1.19.5. L’essai sur la VM avec le fournisseur choisi reste distinct. [Publication OpenCode 1.19.5](https://github.com/anomalyco/opencode/releases/tag/v1.19.5)

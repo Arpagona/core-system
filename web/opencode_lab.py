@@ -89,6 +89,12 @@ class OpenCodeLab:
         with self.lock:
             self.result = result
 
+    def config(self):
+        return {
+            "permission": {"*": "deny"},
+            "agent": {"build": {"steps": 1}},
+        }
+
     def request(self):
         command = [
             self.sandbox, "--unshare-all", "--share-net", "--die-with-parent",
@@ -103,10 +109,10 @@ class OpenCodeLab:
             "--chdir", "/work", "--setenv", "HOME", "/work",
             "--setenv", "PATH", "/usr/bin",
             "--setenv", "OPENCODE_CONFIG_CONTENT",
-            json.dumps({"permission": {"*": "deny"}}),
+            json.dumps(self.config()),
             "--setenv", "OPENCODE_DISABLE_AUTOUPDATE", "true",
             "--setenv", "OPENCODE_DISABLE_DEFAULT_PLUGINS", "true",
-            "/opencode", "run", "--format", "json", "--model", self.model, PROMPT,
+            "/opencode", "run", "--format", "json", "--model", self.model, "--title", "Essai Arpagona", PROMPT,
         ]
         with tempfile.TemporaryFile() as output:
             process = subprocess.run(command, env={self.key_env: os.environ[self.key_env]},
