@@ -14,7 +14,9 @@ case "$VERSION" in
 esac
 REL="/opt/agentcore/releases/$VERSION"
 [ ! -e "$REL" ] && [ ! -L "$REL" ] || { echo "release existante : $REL" >&2; exit 1; }
+[ ! -L /var/backups/agentcore ] || { echo "répertoire de sauvegarde lien interdit" >&2; exit 1; }
 install -d -m 0700 /var/backups/agentcore
+[ "$(stat -c %u /var/backups/agentcore)" = 0 ] || { echo "répertoire de sauvegarde non détenu par root" >&2; exit 1; }
 chmod 0700 /var/backups/agentcore
 TS=$(date -u +%Y%m%dT%H%M%S.%NZ)
 BACKUP="/var/backups/agentcore/avant-$VERSION-$TS.tar.gz"

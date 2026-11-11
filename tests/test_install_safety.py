@@ -9,6 +9,7 @@ import tempfile
 import unittest
 
 SCRIPT = Path(__file__).resolve().parents[1] / "deploy/install.sh"
+ROLLBACK = SCRIPT.with_name("rollback.sh")
 
 class InstallSafety(unittest.TestCase):
     def setUp(self):
@@ -20,6 +21,7 @@ class InstallSafety(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.put(self.bin / "id", "#!/bin/sh\necho 0\n", 0o755)
+        self.put(self.bin / "stat", "#!/bin/sh\nif [ \"$1\" = -c ] && [ \"$2\" = %u ]; then echo 0; else exec /usr/bin/stat \"$@\"; fi\n", 0o755)
         self.put(self.bin / "install", "#!/usr/bin/python3\nimport os,sys\na=sys.argv[1:]; b=[]\nwhile a:\n x=a.pop(0)\n if x in ('-o','-g'): a.pop(0)\n else: b.append(x)\nos.execv('/usr/bin/install',['install']+b)\n", 0o755)
         text = SCRIPT.read_text()
         for p in ("/var/backups/agentcore", "/etc/agentcore", "/var/lib/agentcore", "/opt/agentcore", "/usr/local/bin/agentcore"):
@@ -71,6 +73,38 @@ class InstallSafety(unittest.TestCase):
             self.assertIn(str(old / "content").lstrip("/"), names)
             self.assertIn(str(self.root / "etc/agentcore/api_key").lstrip("/"), names)
             self.assertEqual(tar.extractfile(str(old / "content").lstrip("/")).read(), b"old release\n")
+            target = self.root / "restore"
+            target.mkdir()
+            tar.extractall(target, members=[m for m in tar if m.isfile()], filter="data")
+            self.assertEqual((target / str(old / "content").lstrip("/")).read_text(), "old release\n")
+            self.assertEqual((target / str(self.root / "var/lib/agentcore/state").lstrip("/")).read_text(), "state\n")
+
+    def test_backup_directory_symlink_rejected(self):
+        self.old()
+        self.backups().parent.mkdir(parents=True)
+        destination = self.root / "elsewhere"
+        destination.mkdir()
+        self.backups().symlink_to(destination)
+        self.assertNotEqual(self.run_install().returncode, 0)
+        self.assertEqual((self.root / "opt/agentcore/current").resolve().name, "1")
+        self.assertFalse((self.root / "opt/agentcore/releases/2").exists())
+
+    def test_rollback_and_invalid_target(self):
+        old = self.old()
+        self.assertEqual(self.run_install().returncode, 0)
+        text = ROLLBACK.read_text()
+        for p in ("/var/backups/agentcore", "/opt/agentcore", "/usr/local/bin/agentcore"):
+            text = text.replace(p, str(self.root) + p)
+        script = self.root / "rollback.sh"
+        self.put(script, text, 0o755)
+        env = dict(os.environ, PATH=str(self.bin) + ":/usr/bin:/bin")
+        bad = subprocess.run([str(script), "../other"], env=env, capture_output=True)
+        self.assertNotEqual(bad.returncode, 0)
+        self.assertEqual((self.root / "opt/agentcore/current").resolve().name, "2")
+        good = subprocess.run([str(script)], env=env, capture_output=True)
+        self.assertEqual(good.returncode, 0, good.stderr)
+        self.assertEqual((self.root / "opt/agentcore/current").resolve(), old)
+        self.assertEqual((self.root / "var/lib/agentcore/state").read_text(), "state\n")
 
     def test_first_install(self):
         result = self.run_install()
