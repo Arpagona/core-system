@@ -214,6 +214,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(anon.call("GET", "/%2e%2e/secret.html")[0], 404)
         self.assertEqual(anon.call("GET", "/test.db")[0], 404)
 
+    def test_suppression_de_compte(self):
+        alice = Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        alice.call("POST", "/api/chat", {"text": "bonjour"})
+        self.assertTrue(self.store.delete_user("alice"))
+        self.assertFalse(self.store.delete_user("alice"))
+        self.assertEqual(alice.call("GET", "/api/me")[0], 401)
+        self.assertIsNone(self.store.check_password("alice", PASSWORD_A))
+        self.assertIsNotNone(self.store.check_password("bruno", PASSWORD_B))
+
     def test_journal(self):
         alice = Client(self.port)
         alice.login("alice", "faux-mot-de-passe")

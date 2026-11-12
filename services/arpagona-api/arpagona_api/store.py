@@ -129,6 +129,28 @@ class Store:
         )
         return int(cur.lastrowid or 0)
 
+    def delete_user(self, login: str) -> bool:
+        """Supprime un compte et tout ce qui lui appartient (comptes de recette). Transaction unique."""
+        with self._lock:
+            row = self._db.execute("SELECT id FROM users WHERE login = ?", (login,)).fetchone()
+            if not row:
+                return False
+            uid = row["id"]
+            self._db.execute("BEGIN")
+            try:
+                self._db.execute("DELETE FROM drafts WHERE user_id = ?", (uid,))
+                self._db.execute("DELETE FROM engagements WHERE user_id = ?", (uid,))
+                self._db.execute("DELETE FROM messages WHERE conversation_id IN"
+                                 " (SELECT id FROM conversations WHERE user_id = ?)", (uid,))
+                self._db.execute("DELETE FROM conversations WHERE user_id = ?", (uid,))
+                self._db.execute("DELETE FROM web_sessions WHERE user_id = ?", (uid,))
+                self._db.execute("DELETE FROM users WHERE id = ?", (uid,))
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+            return True
+
     def check_password(self, login: str, password: str) -> sqlite3.Row | None:
         row = self._one("SELECT * FROM users WHERE login = ?", (login,))
         # Calcul fait même si le compte n'existe pas, pour ne pas le révéler par le temps de réponse.

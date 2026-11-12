@@ -13,6 +13,7 @@ Environment=ARPAGONA_PORT=8700
 Environment=ARPAGONA_DB=/var/lib/arpagona-api/arpagona.db
 Environment=ARPAGONA_HERMES_URL=http://127.0.0.1:8642
 Environment=ARPAGONA_HERMES_KEY_FILE=/etc/arpagona-api/hermes_key
+Environment=ARPAGONA_SERVICE_TOKEN_FILE=/etc/arpagona-api/service_token
 Environment=ARPAGONA_STATIC_DIR=/opt/arpagona/current/apps/mission-control-web
 ExecStart=/usr/bin/python3 -m arpagona_api.server
 Restart=on-failure

@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
-from test_api import ApiTest, Client, FakeEngine, PASSWORD_A  # noqa: E402
+from test_api import Client, FakeEngine, PASSWORD_A  # noqa: E402
 from arpagona_api.engagements import InvalidEngagement, fingerprint, parse_due  # noqa: E402
 from arpagona_api.hermes import HermesClient  # noqa: E402
 from arpagona_api.server import App, make_handler, run_due_engagement  # noqa: E402
