@@ -89,3 +89,32 @@ Ces deux outils d'Hermès sont communs à toute l'instance. La recette l'a prouv
 24 contrôles contre les vrais services et le vrai modèle, avec deux comptes fictifs créés puis supprimés : surface exposée, routes internes, politique d'outils, chat en flux, isolation entre comptes, engagement daté, persistance après redémarrage des deux services. Les contrôles marqués « modèle » dépendent d'une réponse du modèle : un échec isolé se relit avant de conclure. Les sessions de recette restent dans l'historique interne d'Hermès ; seules les données côté ARPAGONA sont supprimées.
 
 C'est aussi le test de compatibilité à rejouer après toute mise à niveau d'Hermès.
+
+## Mémoire en graphe : Hindsight, en service séparé
+
+Décision de Thibaud du 12/11/2026 (à confirmer par Maël et Stéphane) : **une instance Hermès par client**, avec Hindsight comme mémoire en graphe.
+
+```bash
+sudo bash /opt/arpagona/current/deploy/atlas/install-hindsight.sh    # installe, démarre, branche le moteur
+sudo python3 /opt/arpagona/current/tests/e2e/recette_banc.py --memoire-equipe 90
+sudo bash /opt/arpagona/current/deploy/atlas/rollback-hindsight.sh   # débranche, sans rien supprimer
+```
+
+| Élément | Valeur |
+|---|---|
+| Serveur | `hindsight-api` 1.2.1, service `hindsight-arpagona`, `127.0.0.1:18897`, clé d'accès obligatoire |
+| Compte | `hindsight-arpagona`, sans accès aux dossiers d'Hermès ni de l'API ARPAGONA |
+| Environnement | Python à part dans `/srv/hindsight-arpagona/venv`, PyTorch CPU |
+| Limites | `MemoryMax=3G`, `CPUQuota=200%` |
+| Plugin Hermès | `hindsight` 1.2.4, catalogue officiel, mode « serveur externe », hors de l'arbre d'Hermès |
+| Extraction | modèle du fournisseur déjà configuré pour l'instance |
+
+### Ce qu'il faut savoir
+
+- **Mémoire d'équipe.** Tous les comptes d'une instance partagent la même banque de mémoire. L'isolation se joue entre instances, donc entre clients ; elle reste à prouver avec une seconde instance.
+- **Les engagements, eux, restent par compte.** Un collègue peut donc se souvenir d'une relance décidée par un autre sans la voir dans son registre. Incohérence à trancher.
+- **Le démarrage automatique du plugin est à éviter** : il télécharge PyTorch avec CUDA (plus de 9 Go) et tourne dans le service du moteur.
+- **`recall_sync` est nécessaire** : sans lui, le rappel n'arrive qu'au tour suivant.
+- **Aucun outil de mémoire n'est donné à l'agent** (`memory_mode: context`) : la liste permise d'outils ne change pas.
+- **Coût** : chaque échange retenu déclenche des appels au modèle pour l'extraction puis la consolidation, en plus de la réponse.
+- **Si la mémoire tombe, le chat continue** ; il ne rappelle simplement rien.
