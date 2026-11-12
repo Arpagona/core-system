@@ -126,14 +126,89 @@ $("menu-btn").addEventListener("click", () => {
   $("menu-btn").setAttribute("aria-expanded", String(open));
 });
 
+async function loadEngagements() {
+  const res = await fetch("/api/engagements");
+  if (res.status !== 200) return;
+  const data = await res.json();
+  const box = $("engagements-list");
+  box.replaceChildren();
+  if (!data.engagements.length) { box.textContent = "Aucun engagement enregistré."; return; }
+  const nf = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeStyle: "short" });
+  for (const e of data.engagements) {
+    const card = document.createElement("article");
+    card.className = "card";
+    const h = document.createElement("h3");
+    h.textContent = e.client + " — " + e.sujet;
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    meta.textContent = nf.format(new Date(e.echeance * 1000)) + " · " + e.statut + " · certitude : " + e.certitude;
+    const p = document.createElement("p");
+    p.textContent = e.decision;
+    card.append(h, meta, p);
+    box.append(card);
+  }
+}
+
+async function loadDrafts() {
+  const res = await fetch("/api/drafts");
+  if (res.status !== 200) return;
+  const data = await res.json();
+  const box = $("drafts-list");
+  box.replaceChildren();
+  if (!data.drafts.length) { box.textContent = "Aucun brouillon en attente."; return; }
+  for (const d of data.drafts) {
+    const card = document.createElement("article");
+    card.className = "card";
+    const h = document.createElement("h3");
+    h.textContent = "Pour : " + d.cible;
+    const meta = document.createElement("p");
+    meta.className = "meta";
+    const tag = document.createElement("span");
+    tag.className = "tag" + (d.statut === "en_attente" ? " wait" : (d.statut === "refuse" ? " bad" : ""));
+    tag.textContent = d.statut;
+    meta.append(tag);
+    if (d.livraison) meta.append(" " + d.livraison);
+    const body = document.createElement("pre");
+    body.textContent = d.corps;
+    card.append(h, meta, body);
+    if (d.statut === "en_attente") {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const ok = document.createElement("button");
+      ok.className = "btn"; ok.textContent = "Approuver";
+      const no = document.createElement("button");
+      no.className = "btn ghost"; no.textContent = "Refuser";
+      const decide = async (approve) => {
+        ok.disabled = no.disabled = true;
+        const r = await fetch("/api/drafts/decide", { method: "POST", headers: HEADERS,
+          body: JSON.stringify({ id: d.id, approve, empreinte: d.empreinte }) });
+        if (r.status !== 200) {
+          const err = await r.json().catch(() => ({}));
+          $("chat-status").textContent = err.error || "Décision impossible.";
+        }
+        loadDrafts();
+      };
+      ok.addEventListener("click", () => decide(true));
+      no.addEventListener("click", () => decide(false));
+      actions.append(ok, no);
+      card.append(actions);
+    }
+    box.append(card);
+  }
+}
+
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === tab));
     const view = tab.dataset.view;
     $("view-chat").hidden = view !== "chat";
     $("view-soon").hidden = view !== "soon";
+    $("view-engagements").hidden = view !== "engagements";
+    $("view-drafts").hidden = view !== "drafts";
     $("view-credits").hidden = view !== "credits";
     if (view === "soon") $("soon-title").textContent = tab.dataset.title;
+    if (view === "engagements") loadEngagements();
+    if (view === "drafts") loadDrafts();
     $("nav").classList.remove("open");
     $("menu-btn").setAttribute("aria-expanded", "false");
   });

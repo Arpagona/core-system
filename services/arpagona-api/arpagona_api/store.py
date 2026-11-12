@@ -38,6 +38,37 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_conv ON messages(conversation_id, id);
+CREATE TABLE IF NOT EXISTS engagements (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    client TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    due_at REAL NOT NULL,
+    due_tz TEXT NOT NULL,
+    due_expression TEXT NOT NULL,
+    source_message_id INTEGER REFERENCES messages(id),
+    confidence TEXT NOT NULL CHECK (confidence IN ('certain', 'probable', 'a_confirmer')),
+    status TEXT NOT NULL CHECK (status IN ('planifie', 'en_preparation', 'pret', 'en_attente',
+                                          'approuve', 'refuse', 'envoye', 'echec', 'annule')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_attempt_at REAL,
+    created_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS drafts (
+    id INTEGER PRIMARY KEY,
+    engagement_id INTEGER NOT NULL REFERENCES engagements(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    target TEXT NOT NULL,
+    body TEXT NOT NULL,
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('en_attente', 'approuve', 'refuse', 'envoye', 'echec')),
+    decided_at REAL,
+    decided_by INTEGER REFERENCES users(id),
+    delivery TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS engagements_due ON engagements(status, due_at);
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY,
     ts REAL NOT NULL,
@@ -164,6 +195,93 @@ class Store:
                          (conversation_id,)) is not None
 
     # --- journal ----------------------------------------------------------
+    # --- engagements ------------------------------------------------------
+    def add_engagement(self, user_id: int, client: str, subject: str, decision: str, due_at: float,
+                       due_tz: str, due_expression: str, confidence: str,
+                       source_message_id: int | None) -> int:
+        cur = self._run(
+            "INSERT INTO engagements(user_id, client, subject, decision, due_at, due_tz, due_expression,"
+            " source_message_id, confidence, status, created_at) VALUES (?,?,?,?,?,?,?,?,?,'planifie',?)",
+            (user_id, client, subject, decision, due_at, due_tz, due_expression, source_message_id,
+             confidence, time.time()),
+        )
+        return int(cur.lastrowid or 0)
+
+    def engagements(self, user_id: int, statuses: tuple[str, ...] | None = None) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM engagements WHERE user_id = ?"
+        args: list = [user_id]
+        if statuses:
+            sql += " AND status IN (" + ",".join("?" * len(statuses)) + ")"
+            args.extend(statuses)
+        return self._all(sql + " ORDER BY due_at", tuple(args))
+
+    def engagement(self, engagement_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM engagements WHERE id = ?", (engagement_id,))
+
+    def claim_due(self, now: float, retry_after_s: float = 600.0) -> sqlite3.Row | None:
+        """Réserve atomiquement un engagement arrivé à échéance. Un seul déclencheur peut l'obtenir."""
+        with self._lock:
+            row = self._db.execute(
+                "SELECT * FROM engagements WHERE status = 'planifie' AND due_at <= ?"
+                " AND (last_attempt_at IS NULL OR last_attempt_at < ?) ORDER BY due_at LIMIT 1",
+                (now, now - retry_after_s)).fetchone()
+            if not row:
+                return None
+            self._db.execute(
+                "UPDATE engagements SET status = 'en_preparation', attempts = attempts + 1, last_attempt_at = ?"
+                " WHERE id = ? AND status = 'planifie'", (now, row["id"]))
+            return self._db.execute("SELECT * FROM engagements WHERE id = ?", (row["id"],)).fetchone()
+
+    def release_engagement(self, engagement_id: int, status: str) -> None:
+        self._run("UPDATE engagements SET status = ? WHERE id = ?", (status, engagement_id))
+
+    def add_draft(self, engagement_id: int, user_id: int, target: str, body: str, fingerprint: str) -> int:
+        cur = self._run(
+            "INSERT INTO drafts(engagement_id, user_id, target, body, fingerprint, status, created_at)"
+            " VALUES (?,?,?,?,?,'en_attente',?)",
+            (engagement_id, user_id, target, body, fingerprint, time.time()),
+        )
+        return int(cur.lastrowid or 0)
+
+    def drafts(self, user_id: int | None = None) -> list[sqlite3.Row]:
+        if user_id is None:
+            return self._all("SELECT * FROM drafts ORDER BY created_at")
+        return self._all("SELECT * FROM drafts WHERE user_id = ? ORDER BY created_at", (user_id,))
+
+    def draft(self, draft_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM drafts WHERE id = ?", (draft_id,))
+
+    def decide_draft(self, draft_id: int, approve: bool, user_id: int, expected_fingerprint: str) -> str:
+        """Décide d'un brouillon. Refuse si le contenu a changé depuis l'affichage."""
+        with self._lock:
+            row = self._db.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            if not row:
+                return "inconnu"
+            if row["status"] != "en_attente":
+                return "deja_decide"
+            if not hmac.compare_digest(row["fingerprint"], expected_fingerprint):
+                return "contenu_modifie"
+            status = "approuve" if approve else "refuse"
+            self._db.execute("UPDATE drafts SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?",
+                             (status, time.time(), user_id, draft_id))
+            self._db.execute("UPDATE engagements SET status = ? WHERE id = ?", (status, row["engagement_id"]))
+            return status
+
+    def set_delivery_note(self, draft_id: int, note: str) -> None:
+        self._run("UPDATE drafts SET delivery = ? WHERE id = ?", (note, draft_id))
+
+    def user_for_hermes_session(self, hermes_session_id: str) -> sqlite3.Row | None:
+        return self._one("SELECT u.* FROM conversations c JOIN users u ON u.id = c.user_id"
+                         " WHERE c.hermes_session_id = ?", (hermes_session_id,))
+
+    def mark_delivery(self, draft_id: int, delivery: str, ok: bool) -> None:
+        with self._lock:
+            row = self._db.execute("SELECT engagement_id FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            self._db.execute("UPDATE drafts SET delivery = ? WHERE id = ?", (delivery, draft_id))
+            if row:
+                self._db.execute("UPDATE engagements SET status = ? WHERE id = ?",
+                                 ("envoye" if ok else "echec", row["engagement_id"]))
+
     def audit(self, user_id: int | None, action: str, detail: str = "") -> None:
         self._run("INSERT INTO audit(ts, user_id, action, detail) VALUES (?,?,?,?)",
                   (time.time(), user_id, action, detail[:500]))

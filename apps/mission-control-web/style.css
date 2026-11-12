@@ -59,3 +59,14 @@ input, textarea { font: inherit; color: var(--ink); background: var(--bg); borde
   .msg { max-width: 95%; }
 }
 @media (prefers-reduced-motion: reduce) { .btn:active { transform: none; } }
+
+.cards { display: flex; flex-direction: column; gap: 12px; }
+.card { background: var(--panel); border: 2px solid var(--line); box-shadow: 4px 4px 0 #000; padding: 12px; }
+.card h3 { margin: 0 0 6px; font-size: 16px; }
+.card .meta { color: var(--dim); font-size: 14px; display: flex; flex-wrap: wrap; gap: 12px; }
+.card pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0; padding: 8px; background: var(--bg); border: 2px solid var(--line); font: inherit; }
+.card .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tag { padding: 0 6px; border: 2px solid var(--line); color: var(--dim); }
+.tag.wait { color: var(--accent); border-color: var(--accent); }
+.tag.bad { color: var(--bad); border-color: var(--bad); }
+.hint { color: var(--dim); }

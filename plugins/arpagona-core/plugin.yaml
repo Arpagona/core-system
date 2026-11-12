@@ -1,0 +1,7 @@
+name: arpagona-core
+version: 0.1.0
+description: "Briques métier ARPAGONA pour Hermès : engagements et brouillons soumis à validation humaine."
+author: ARPAGONA
+kind: standalone
+platforms:
+  - linux

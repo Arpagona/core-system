@@ -32,9 +32,10 @@
   <nav id="nav" class="nav" aria-label="Sections">
     <button class="tab on" data-view="chat">Conversation</button>
     <button class="tab" data-view="soon" data-title="Activité">Activité</button>
+    <button class="tab" data-view="engagements">Engagements</button>
+    <button class="tab" data-view="drafts">Approbations</button>
     <button class="tab" data-view="soon" data-title="Missions">Missions</button>
     <button class="tab" data-view="soon" data-title="Kanban">Kanban</button>
-    <button class="tab" data-view="soon" data-title="Approbations">Approbations</button>
     <button class="tab" data-view="soon" data-title="Garage">Garage</button>
     <button class="tab" data-view="soon" data-title="Dream">Dream</button>
     <button class="tab" data-view="soon" data-title="Guardian">Guardian</button>
@@ -56,6 +57,18 @@
   <section id="view-soon" class="page" hidden>
     <h2 id="soon-title"></h2>
     <p>Cette section n'est pas encore branchée. Rien n'est simulé ici.</p>
+  </section>
+
+  <section id="view-engagements" class="page" hidden>
+    <h2>Engagements</h2>
+    <p class="hint">Ce que le système a retenu comme décision datée. Une échéance passée déclenche une préparation de brouillon, jamais un envoi.</p>
+    <div id="engagements-list" class="cards"></div>
+  </section>
+
+  <section id="view-drafts" class="page" hidden>
+    <h2>Approbations</h2>
+    <p class="hint">Rien ne part sans votre décision. Approuver prépare le message ; aucun connecteur d'envoi n'est encore autorisé, le brouillon reste donc à copier.</p>
+    <div id="drafts-list" class="cards"></div>
   </section>
 
   <section id="view-credits" class="page" hidden>

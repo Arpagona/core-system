@@ -4,12 +4,14 @@ from __future__ import annotations
 import json
 import os
 import threading
+import hmac
 import time
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
 from .store import SESSION_TTL_S, Store
 
@@ -23,11 +25,13 @@ LOGIN_LOCK_S = 60
 
 
 class App:
-    def __init__(self, store: Store, hermes: HermesClient, static_dir: Path, cookie_secure: bool):
+    def __init__(self, store: Store, hermes: HermesClient, static_dir: Path, cookie_secure: bool,
+                 service_token: str = ""):
         self.store = store
         self.hermes = hermes
         self.static_dir = static_dir.resolve()
         self.cookie_secure = cookie_secure
+        self.service_token = service_token
         self._fails: dict[str, tuple[int, float]] = {}
         self._fails_lock = threading.Lock()
 
@@ -106,9 +110,10 @@ def make_handler(app: App):
             token = self._token()
             return app.store.user_for_token(token) if token else None
 
-        def _body(self) -> dict | None:
-            """Corps JSON d'une requête modifiante. L'en-tête X-Arpagona interdit les envois inter-sites simples."""
-            if self.headers.get("X-Arpagona") != "1":
+        def _body(self, require_marker: bool = True) -> dict | None:
+            """Corps JSON. L'en-tête X-Arpagona interdit les envois inter-sites simples côté navigateur ;
+            les appels internes (outils du plugin) en sont dispensés mais exigent le jeton de service."""
+            if require_marker and self.headers.get("X-Arpagona") != "1":
                 return None
             if "application/json" not in self.headers.get("Content-Type", ""):
                 return None
@@ -142,6 +147,12 @@ def make_handler(app: App):
                 return self._json(200, {"login": user["login"], "name": user["display_name"]})
             if path == "/api/conversation":
                 return self._conversation()
+            if path == "/api/engagements":
+                return self._engagements()
+            if path == "/api/drafts":
+                return self._drafts()
+            if path == "/internal/engagements":
+                return self._internal_engagements()
             if path.startswith("/api/"):
                 return self._json(404, {"error": "inconnu"})
             return self._static(path)
@@ -154,6 +165,12 @@ def make_handler(app: App):
                 return self._logout()
             if path == "/api/chat":
                 return self._chat()
+            if path == "/api/drafts/decide":
+                return self._decide()
+            if path == "/internal/engagements":
+                return self._internal_record()
+            if path == "/internal/drafts":
+                return self._internal_draft()
             return self._json(404, {"error": "inconnu"})
 
         # --- fichiers statiques ---------------------------------------------
@@ -269,7 +286,164 @@ def make_handler(app: App):
             send({"type": "end", "id": answer_id, "status": final["status"] if final else "pending",
                   "text": final["content"] if final else ""})
 
+        # --- engagements et approbations (utilisateur) ----------------------
+        def _engagements(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            rows = app.store.engagements(user["id"])
+            self._json(200, {"engagements": [
+                {"id": r["id"], "client": r["client"], "sujet": r["subject"], "decision": r["decision"],
+                 "echeance": r["due_at"], "fuseau": r["due_tz"], "expression": r["due_expression"],
+                 "certitude": r["confidence"], "statut": r["status"]} for r in rows]})
+
+        def _drafts(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            rows = app.store.drafts(user["id"])
+            self._json(200, {"drafts": [
+                {"id": r["id"], "engagement_id": r["engagement_id"], "cible": r["target"], "corps": r["body"],
+                 "empreinte": r["fingerprint"], "statut": r["status"], "livraison": r["delivery"],
+                 "cree": r["created_at"]} for r in rows]})
+
+        def _decide(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            data = self._body()
+            if not data:
+                return self._json(400, {"error": "requête invalide"})
+            try:
+                draft_id = int(data.get("id", 0))
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "identifiant invalide"})
+            outcome = app.store.decide_draft(draft_id, bool(data.get("approve")), user["id"],
+                                             str(data.get("empreinte", "")))
+            if outcome == "contenu_modifie":
+                app.store.audit(user["id"], "validation_refusée_contenu_modifié", str(draft_id))
+                return self._json(409, {"error": "le brouillon a changé : relisez-le avant de décider"})
+            if outcome in ("inconnu", "deja_decide"):
+                return self._json(409, {"error": "brouillon inconnu ou déjà décidé"})
+            if outcome == "approuve":
+                # Aucun connecteur d'envoi n'est autorisé à ce stade : le brouillon est prêt, pas envoyé.
+                app.store.set_delivery_note(draft_id, "non envoyé : aucun connecteur autorisé")
+            app.store.audit(user["id"], "brouillon_" + outcome, str(draft_id))
+            self._json(200, {"statut": outcome, "livraison": "non envoyé : aucun connecteur autorisé"
+                             if outcome == "approuve" else None})
+
+        # --- routes internes (outils du plugin) -----------------------------
+        def _service_user(self):
+            """Authentifie l'appel d'outil et rattache la session Hermès à un utilisateur."""
+            token = self.headers.get("X-Arpagona-Service", "")
+            if not app.service_token or not hmac.compare_digest(token, app.service_token):
+                return None
+            session = self.headers.get("X-Hermes-Session", "")
+            return app.store.user_for_hermes_session(session) if session else None
+
+        def _internal_engagements(self) -> None:
+            user = self._service_user()
+            if not user:
+                return self._json(401, {"error": "service non autorisé"})
+            rows = app.store.engagements(user["id"])
+            self._json(200, {"engagements": [
+                {"id": r["id"], "client": r["client"], "sujet": r["subject"], "decision": r["decision"],
+                 "echeance": r["due_at"], "fuseau": r["due_tz"], "certitude": r["confidence"],
+                 "statut": r["status"]} for r in rows]})
+
+        def _internal_record(self) -> None:
+            user = self._service_user()
+            if not user:
+                return self._json(401, {"error": "service non autorisé"})
+            data = self._body(require_marker=False)
+            if not data:
+                return self._json(400, {"error": "requête invalide"})
+            try:
+                client, subject, decision, confidence = validate_fields(
+                    str(data.get("client", "")), str(data.get("sujet", "")),
+                    str(data.get("decision", "")), str(data.get("certitude", "")))
+                due_at, due_tz, expression = parse_due(str(data.get("echeance", "")))
+            except InvalidEngagement as exc:
+                return self._json(400, {"error": str(exc)})
+            engagement_id = app.store.add_engagement(user["id"], client, subject, decision, due_at, due_tz,
+                                                     expression, confidence, None)
+            app.store.audit(user["id"], "engagement_enregistré", f"{engagement_id} {client}")
+            self._json(201, {"id": engagement_id, "statut": "planifie", "echeance": due_at, "fuseau": due_tz})
+
+        def _internal_draft(self) -> None:
+            user = self._service_user()
+            if not user:
+                return self._json(401, {"error": "service non autorisé"})
+            data = self._body(require_marker=False)
+            if not data:
+                return self._json(400, {"error": "requête invalide"})
+            try:
+                engagement_id = int(data.get("engagement_id", 0))
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "engagement invalide"})
+            engagement = app.store.engagement(engagement_id)
+            if not engagement or engagement["user_id"] != user["id"]:
+                return self._json(404, {"error": "engagement inconnu"})
+            target = str(data.get("cible", "")).strip()
+            body = str(data.get("corps", "")).strip()
+            if not target or not body or len(body) > 8000:
+                return self._json(400, {"error": "cible ou corps manquant"})
+            draft_id = app.store.add_draft(engagement_id, user["id"], target, body,
+                                           fingerprint(target, body))
+            app.store.release_engagement(engagement_id, "en_attente")
+            app.store.audit(user["id"], "brouillon_créé", f"{draft_id} engagement {engagement_id}")
+            self._json(201, {"id": draft_id, "statut": "en_attente"})
+
     return Handler
+
+
+def start_trigger(app: App, interval_s: float = 30.0) -> threading.Thread:
+    """Déclencheur d'échéances : réveille l'agent pour un engagement arrivé à terme, sans cron externe."""
+
+    def loop() -> None:
+        while True:
+            try:
+                due = app.store.claim_due(time.time())
+                if due:
+                    run_due_engagement(app, due)
+            except Exception:  # le déclencheur ne doit jamais mourir
+                pass
+            time.sleep(interval_s)
+
+    thread = threading.Thread(target=loop, name="echeances", daemon=True)
+    thread.start()
+    return thread
+
+
+def run_due_engagement(app: App, engagement: dict) -> None:
+    conv = app.store.conversation_for(engagement["user_id"])
+    prompt = (
+        "Échéance atteinte. Engagement enregistré :\n"
+        f"- client : {engagement['client']}\n- sujet : {engagement['subject']}\n"
+        f"- décision : {engagement['decision']}\n- échéance : {engagement['due_expression']}\n\n"
+        "Prépare un brouillon de relance avec l'outil arpagona_draft_create. "
+        "Rappelle le motif et la décision dans le corps. N'envoie rien."
+    )
+    try:
+        run_id = app.hermes.start_run(prompt, conv["hermes_session_id"], f"arpagona-echeance-{engagement['id']}")
+    except HermesError:
+        app.store.release_engagement(engagement["id"], "planifie")
+        return
+    deadline = time.time() + 240
+    while time.time() < deadline:
+        try:
+            status = app.hermes.run_status(run_id)
+        except HermesError:
+            time.sleep(5)
+            continue
+        if status.get("status") in TERMINAL:
+            app.store.audit(engagement["user_id"], "échéance_traitée",
+                            f"{engagement['id']} {status.get('status')}")
+            fresh = app.store.engagement(engagement["id"])
+            if fresh and fresh["status"] == "en_preparation":
+                app.store.release_engagement(engagement["id"], "planifie")
+            return
+        time.sleep(3)
 
 
 def main() -> None:
@@ -281,6 +455,9 @@ def main() -> None:
     hermes = HermesClient(os.environ.get("ARPAGONA_HERMES_URL", "http://127.0.0.1:8642"),
                           Path(key_file).read_text(encoding="ascii").strip())
     app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1")
+    token_file = os.environ.get("ARPAGONA_SERVICE_TOKEN_FILE", "")
+    app.service_token = Path(token_file).read_text(encoding="ascii").strip() if token_file else ""
+    start_trigger(app)
     server = ThreadingHTTPServer((host, port), make_handler(app))
     server.daemon_threads = True
     try:
