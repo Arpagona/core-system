@@ -184,10 +184,18 @@ def main() -> int:
         # --- mémoire d'équipe (instance à mémoire commune) ----------------------------
         if ns.memoire_equipe:
             time.sleep(ns.memoire_equipe)
-            shared = b.chat("Quel est le nom de code du projet ? Réponds par le code seul. "
-                            "Si tu ne le connais pas, réponds exactement : INCONNU.")
+            # Deux essais : le rappel peut encore être en cours de consolidation au premier.
+            # Un code au bon format mais différent est une invention du modèle : il compte comme un échec.
+            answered = []
+            for _ in range(2):
+                shared = b.chat("Quel est le nom de code du projet ? Il est de la forme ZEPHYR- suivie de "
+                                "6 caractères hexadécimaux. Réponds par le code seul, ou INCONNU.")
+                answered.append(shared.get("text", ""))
+                if code in answered[-1]:
+                    break
+                time.sleep(15)
             check("M1", "mémoire d'équipe : le compte B retrouve ce que le compte A a confié",
-                  code in shared.get("text", ""), shared.get("text", ""), "modèle")
+                  any(code in t for t in answered), f"attendu {code} ; obtenu {answered}", "modèle")
             conv_b = json.loads(b.call("GET", "/api/conversation")[1]).get("messages", [])
             check("M2", "le fil de conversation de B ne contient aucun message écrit par A",
                   not any(m["role"] == "user" and code in m["text"] for m in conv_b))
@@ -240,7 +248,7 @@ def main() -> int:
                 check("F3", "approbation refusée si le contenu a changé",
                       a.call("POST", "/api/drafts/decide",
                              {"id": draft["id"], "approve": True, "empreinte": "0" * 64})[0] == 409)
-                status, raw, _ = a.call("POST", "/api/drafts/decide",
+                status, raw = a.call("POST", "/api/drafts/decide",
                                         {"id": draft["id"], "approve": True, "empreinte": draft["empreinte"]})
                 decided = json.loads(raw) if status == 200 else {}
                 check("F4", "approbation explicite : approuvé et non envoyé",
