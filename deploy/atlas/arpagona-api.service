@@ -1,0 +1,39 @@
+[Unit]
+Description=API ARPAGONA et Mission Control (banc de test, boucle locale)
+After=network-online.target hermes-arpagona-gateway.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arpagona-api
+Group=arpagona-api
+WorkingDirectory=/opt/arpagona/current/services/arpagona-api
+Environment=ARPAGONA_BIND=127.0.0.1
+Environment=ARPAGONA_PORT=8700
+Environment=ARPAGONA_DB=/var/lib/arpagona-api/arpagona.db
+Environment=ARPAGONA_HERMES_URL=http://127.0.0.1:8642
+Environment=ARPAGONA_HERMES_KEY_FILE=/etc/arpagona-api/hermes_key
+Environment=ARPAGONA_STATIC_DIR=/opt/arpagona/current/apps/mission-control-web
+ExecStart=/usr/bin/python3 -m arpagona_api.server
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/arpagona-api
+ProtectHome=yes
+InaccessiblePaths=/srv/hermes-arpagona /etc/agentcore /var/lib/agentcore /var/backups/agentcore
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+CPUQuota=100%
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARPAGONA Mission Control</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <button id="menu-btn" class="btn ghost" aria-label="Ouvrir le menu" aria-controls="nav" aria-expanded="false">≡</button>
+  <h1><span class="logo" aria-hidden="true">▚</span> ARPAGONA <small>Mission Control</small></h1>
+  <div id="who" class="who" hidden>
+    <span id="who-name"></span>
+    <button id="logout" class="btn ghost">Quitter</button>
+  </div>
+</header>
+
+<main id="login-view" class="login" hidden>
+  <form id="login-form" class="panel" autocomplete="on">
+    <h2>Connexion</h2>
+    <label for="login">Identifiant</label>
+    <input id="login" name="username" autocomplete="username" required maxlength="64">
+    <label for="password">Mot de passe</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+    <p id="login-error" class="error" role="alert"></p>
+    <button class="btn" type="submit">Entrer</button>
+  </form>
+</main>
+
+<div id="app-view" class="layout" hidden>
+  <nav id="nav" class="nav" aria-label="Sections">
+    <button class="tab on" data-view="chat">Conversation</button>
+    <button class="tab" data-view="soon" data-title="Activité">Activité</button>
+    <button class="tab" data-view="soon" data-title="Missions">Missions</button>
+    <button class="tab" data-view="soon" data-title="Kanban">Kanban</button>
+    <button class="tab" data-view="soon" data-title="Approbations">Approbations</button>
+    <button class="tab" data-view="soon" data-title="Garage">Garage</button>
+    <button class="tab" data-view="soon" data-title="Dream">Dream</button>
+    <button class="tab" data-view="soon" data-title="Guardian">Guardian</button>
+    <button class="tab" data-view="soon" data-title="Ressources">Ressources</button>
+    <button class="tab" data-view="credits">Crédits</button>
+  </nav>
+
+  <section id="view-chat" class="chat">
+    <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
+    <p id="chat-status" class="status" role="status"></p>
+    <form id="chat-form" class="composer">
+      <label for="text" class="sr">Votre message</label>
+      <textarea id="text" rows="2" maxlength="8000" placeholder="Écrire à votre collègue…" required></textarea>
+      <button id="mic" class="btn ghost" type="button" disabled title="Dictée vocale : pas encore disponible" aria-label="Dictée vocale, pas encore disponible">🎤</button>
+      <button id="send" class="btn" type="submit">Envoyer</button>
+    </form>
+  </section>
+
+  <section id="view-soon" class="page" hidden>
+    <h2 id="soon-title"></h2>
+    <p>Cette section n'est pas encore branchée. Rien n'est simulé ici.</p>
+  </section>
+
+  <section id="view-credits" class="page" hidden>
+    <h2>Crédits</h2>
+    <p>ARPAGONA Mission Control s'appuie sur des logiciels tiers.</p>
+    <ul>
+      <li>Hermes Agent — © Nous Research, licence MIT.</li>
+    </ul>
+  </section>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
