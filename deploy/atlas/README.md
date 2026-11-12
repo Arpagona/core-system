@@ -62,3 +62,30 @@ Essais faits sur la VM, par l'API en boucle locale, avec des données fictives.
 ## Mise à niveau d'Hermès
 
 Non encore exercée. Procédure prévue : snapshot Proxmox, relance de `install-hermes.sh` avec `HERMES_COMMIT=<nouveau commit>`, recette rejouée, retour au snapshot en cas de régression.
+
+## Déploiement reproductible et recette du banc
+
+Tout l'état du banc lié à ARPAGONA est posé par `deploy-arpagona.sh` ; aucun geste manuel n'est requis après lui.
+
+```bash
+git archive --format=tar.gz -o arp.tar.gz <commit> services apps deploy plugins tests
+sudo bash deploy-arpagona.sh arp.tar.gz <commit>
+sudo python3 /opt/arpagona/current/tests/e2e/recette_banc.py --json /tmp/recette.json
+```
+
+Le script, rejouable :
+
+- tire une seule fois un **jeton de service** propre aux outils du plugin, distinct de la clé de l'API Hermès, et en remet une copie lisible par le seul compte du moteur ;
+- installe le plugin `arpagona-core` hors de l'arbre d'Hermès et l'active ;
+- applique `politique-outils.sh` : **liste permise** d'outils par canal (`web`, `todo`, `arpagona`), tout le reste désactivé, mémoire native coupée ;
+- redémarre les deux services et attend qu'ils répondent.
+
+### Pourquoi `memory` et `session_search` sont coupés
+
+Ces deux outils d'Hermès sont communs à toute l'instance. La recette l'a prouvé le 12/11/2026 : un second compte a retrouvé, par `session_search`, une information confiée par le premier. Tant qu'une instance sert plus d'un utilisateur, ils restent coupés. Conséquence assumée : l'agent ne garde pour l'instant que le fil de la conversation de chaque compte et le registre d'engagements ; la mémoire durable par utilisateur reste à construire côté ARPAGONA.
+
+### Recette `tests/e2e/recette_banc.py`
+
+24 contrôles contre les vrais services et le vrai modèle, avec deux comptes fictifs créés puis supprimés : surface exposée, routes internes, politique d'outils, chat en flux, isolation entre comptes, engagement daté, persistance après redémarrage des deux services. Les contrôles marqués « modèle » dépendent d'une réponse du modèle : un échec isolé se relit avant de conclure. Les sessions de recette restent dans l'historique interne d'Hermès ; seules les données côté ARPAGONA sont supprimées.
+
+C'est aussi le test de compatibilité à rejouer après toute mise à niveau d'Hermès.
