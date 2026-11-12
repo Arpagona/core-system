@@ -224,6 +224,20 @@ class ApiTest(unittest.TestCase):
         self.assertIsNone(self.store.check_password("alice", PASSWORD_A))
         self.assertIsNotNone(self.store.check_password("bruno", PASSWORD_B))
 
+    def test_cle_d_idempotence_unique_apres_suppression(self):
+        """Un compte supprimé puis un nouveau compte réutilisent les mêmes numéros de ligne : la clé doit différer."""
+        self.store.delete_user("bruno")
+        alice = Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        alice.call("POST", "/api/chat", {"text": "un"})
+        self.store.delete_user("alice")
+        self.store.add_user("carla", "Carla Fictive", PASSWORD_A)
+        carla = Client(self.port)
+        carla.login("carla", PASSWORD_A)
+        self.assertEqual(carla.call("POST", "/api/chat", {"text": "deux"})[0], 200)
+        self.assertEqual(len(self.engine.keys), 2)
+        self.assertEqual(len(set(self.engine.keys)), 2)
+
     def test_journal(self):
         alice = Client(self.port)
         alice.login("alice", "faux-mot-de-passe")

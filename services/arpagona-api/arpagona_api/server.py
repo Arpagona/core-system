@@ -243,7 +243,8 @@ def make_handler(app: App):
             app.store.add_message(conv["id"], "user", text)
             answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending")
             try:
-                run_id = app.hermes.start_run(text, conv["hermes_session_id"], f"arpagona-msg-{answer_id}")
+                run_id = app.hermes.start_run(text, conv["hermes_session_id"],
+                                              f"arpagona-{conv['hermes_session_id']}-msg-{answer_id}")
             except HermesError as exc:
                 app.store.settle_message(answer_id, "Le moteur est indisponible.", "failed")
                 app.store.audit(user["id"], "chat_échec", str(exc))
@@ -425,7 +426,11 @@ def run_due_engagement(app: App, engagement: dict) -> None:
         "Rappelle le motif et la décision dans le corps. N'envoie rien."
     )
     try:
-        run_id = app.hermes.start_run(prompt, conv["hermes_session_id"], f"arpagona-echeance-{engagement['id']}")
+        # La clé porte la session (aléatoire, propre au compte) et le numéro de tentative : un numéro de
+        # ligne seul peut être réattribué par SQLite, et une nouvelle tentative doit relancer une exécution.
+        run_id = app.hermes.start_run(
+            prompt, conv["hermes_session_id"],
+            f"arpagona-{conv['hermes_session_id']}-echeance-{engagement['id']}-{engagement['attempts']}")
     except HermesError:
         app.store.release_engagement(engagement["id"], "planifie")
         return
