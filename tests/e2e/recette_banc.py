@@ -88,6 +88,31 @@ def raw_status(base: str, method: str, path: str, headers: dict | None = None, b
     return status
 
 
+def hindsight_recall(ns, query: str) -> tuple[str, str]:
+    """Interroge directement le serveur de mémoire : preuve que le fait y est, indépendamment du modèle."""
+    import urllib.request
+    key = ""
+    try:
+        with open(ns.hindsight_env, encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("HINDSIGHT_API_TENANT_API_KEY="):
+                    key = line.split("=", 1)[1].strip()
+    except OSError:
+        return "", "fichier de clé de mémoire illisible"
+    if not key:
+        return "", "clé de mémoire absente"
+    body = json.dumps({"query": query, "types": ["observation", "world"], "budget": "mid"}).encode()
+    req = urllib.request.Request(f"{ns.hindsight}/v1/default/banks/{ns.bank}/memories/recall", data=body,
+                                 headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+    except Exception as exc:  # le détail importe pour le rapport
+        return "", f"requête de rappel en échec : {exc}"
+    texts = " ".join(str(item.get("text", "")) for item in data.get("results", []))
+    return texts, f"{len(data.get('results', []))} résultat(s)"
+
+
 def read_secret(path: str) -> str:
     try:
         with open(path, encoding="ascii") as handle:
@@ -107,6 +132,9 @@ def main() -> int:
     parser.add_argument("--echeance", action="store_true", default=True,
                         help="éprouver le déclencheur d'échéance (actif par défaut)")
     parser.add_argument("--sans-echeance", dest="echeance", action="store_false")
+    parser.add_argument("--hindsight", default="http://127.0.0.1:18897")
+    parser.add_argument("--bank", default="arpagona-banc")
+    parser.add_argument("--hindsight-env", default="/etc/hindsight-arpagona/api.env")
     parser.add_argument("--json", default="")
     parser.add_argument("--skip-restart", action="store_true", help="ne pas redémarrer les services")
     parser.add_argument("--memoire-equipe", type=int, default=0, metavar="SECONDES",
@@ -121,6 +149,10 @@ def main() -> int:
     user_a, user_b = f"recette-a-{tag}", f"recette-b-{tag}"
     pw_a, pw_b = secrets.token_urlsafe(18), secrets.token_urlsafe(18)
     code = "ZEPHYR-" + secrets.token_hex(3).upper()
+    # Faits métier uniques à cette exécution : un essai précédent ne peut pas les fournir par hasard.
+    societe = f"Menuiserie Vauban-{tag}"
+    contact = f"Solenn Kerbrat-{tag}"
+    bois = f"frêne teinté-{tag}"
     started = time.time()
     try:
         ok_a = manage(ns, "add-user", user_a, "--name", "Recette A", "--password-stdin", stdin=pw_a + "\n")
@@ -173,8 +205,9 @@ def main() -> int:
         a, b = Session(ns.api), Session(ns.api)
         check("C1", "connexion du compte A", a.login(user_a, pw_a) == 200)
         check("C2", "connexion du compte B", b.login(user_b, pw_b) == 200)
-        first = a.chat(f"Pour la suite de notre travail, le nom de code du projet est {code}. "
-                       "Retiens-le durablement. Réponds seulement : noté.")
+        first = a.chat(f"Pour la suite de notre travail : la société fictive {societe} a choisi le {bois} "
+                       f"pour sa commande, sa responsable des achats est {contact}, "
+                       f"et le nom de code du projet est {code}. Réponds seulement : noté.")
         check("C3", "réponse réelle du moteur, reçue en flux",
               first.get("status") == "done" and first.get("deltas", 0) > 0, json.dumps(first)[:200], "modèle")
         recall = a.chat("Quel est le nom de code du projet ? Réponds par le code seul.")
@@ -186,16 +219,20 @@ def main() -> int:
             time.sleep(ns.memoire_equipe)
             # Deux essais : le rappel peut encore être en cours de consolidation au premier.
             # Un code au bon format mais différent est une invention du modèle : il compte comme un échec.
+            recalled, detail = hindsight_recall(ns, societe)
+            check("M0", "la mémoire contient les faits confiés (contrôle serveur)",
+                  all(f in recalled for f in (bois, contact)), detail)
             answered = []
             for _ in range(2):
-                shared = b.chat("Quel est le nom de code du projet ? Il est de la forme ZEPHYR- suivie de "
-                                "6 caractères hexadécimaux. Réponds par le code seul, ou INCONNU.")
+                shared = b.chat(f"Que sais-tu de la société {societe} ? Donne le bois, le contact et le nom "
+                                "de code du projet. Si tu ne sais rien de cette société, réponds exactement : INCONNU.")
                 answered.append(shared.get("text", ""))
-                if code in answered[-1]:
+                if bois in answered[-1]:
                     break
                 time.sleep(15)
+            found = [f for f in (bois, contact, code) if any(f in t for t in answered)]
             check("M1", "mémoire d'équipe : le compte B retrouve ce que le compte A a confié",
-                  any(code in t for t in answered), f"attendu {code} ; obtenu {answered}", "modèle")
+                  len(found) == 3, f"retrouvé {len(found)}/3 ; obtenu {answered}"[:280], "modèle")
             conv_b = json.loads(b.call("GET", "/api/conversation")[1]).get("messages", [])
             check("M2", "le fil de conversation de B ne contient aucun message écrit par A",
                   not any(m["role"] == "user" and code in m["text"] for m in conv_b))
