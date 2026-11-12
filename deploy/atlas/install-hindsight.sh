@@ -101,7 +101,10 @@ cat > "$HERMES_HOME/hindsight/config.json" <<JSON
   "auto_retain": true,
   "auto_recall": true,
   "recall_sync": true,
-  "recall_budget": "mid"
+  "recall_budget": "mid",
+  "recall_types": ["observation", "world", "experience"],
+  "recall_max_tokens": 8000,
+  "recall_max_input_chars": 4000
 }
 JSON
 chown hermes-arpagona:hermes-arpagona "$HERMES_HOME/hindsight/config.json"; chmod 600 "$HERMES_HOME/hindsight/config.json"
