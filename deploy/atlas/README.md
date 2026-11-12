@@ -86,7 +86,13 @@ Ces deux outils d'Hermès sont communs à toute l'instance. La recette l'a prouv
 
 ### Recette `tests/e2e/recette_banc.py`
 
-24 contrôles contre les vrais services et le vrai modèle, avec deux comptes fictifs créés puis supprimés : surface exposée, routes internes, politique d'outils, chat en flux, isolation entre comptes, engagement daté, persistance après redémarrage des deux services. Les contrôles marqués « modèle » dépendent d'une réponse du modèle : un échec isolé se relit avant de conclure. Les sessions de recette restent dans l'historique interne d'Hermès ; seules les données côté ARPAGONA sont supprimées.
+Contrôles contre les vrais services et le vrai modèle, avec deux comptes fictifs créés puis supprimés : surface exposée, routes internes, politique d'outils, chat en flux, isolation entre comptes, engagement daté, persistance après redémarrage des deux services, et — sauf `--sans-echeance` — le cycle complet d'une relance : échéance forcée, brouillon produit par l'agent, refus d'une empreinte modifiée, approbation explicite, non-envoi, aucune seconde décision.
+
+Options utiles :
+
+- `--memoire-equipe N` : l'instance a une mémoire commune ; après N secondes, un second compte doit retrouver ce que le premier a confié. C'est le contrôle M1.
+- `--sans-echeance` : saute le déclencheur d'échéance, pour une passe rapide.
+- `--json chemin` : conserve le détail des contrôles. Les contrôles marqués « modèle » dépendent d'une réponse du modèle : un échec isolé se relit avant de conclure. Les sessions de recette restent dans l'historique interne d'Hermès ; seules les données côté ARPAGONA sont supprimées.
 
 C'est aussi le test de compatibilité à rejouer après toute mise à niveau d'Hermès.
 
