@@ -4,6 +4,8 @@ Atelier de développement collaboratif de Thibaud, Maël et Stéphane, trois co-
 
 Socle agentique réutilisable en Rust, organisé par responsabilités fonctionnelles. Adaptateurs Python isolés si nécessaire. Le nom du dépôt `core-system` est conservé ; aucun ancien code n'a été importé.
 
+> **Proposition en cours (12/11/2026, non approuvée) :** faire d'Agent Core une surcouche d'Hermès Agent plutôt qu'un noyau Rust. Voir l'[ADR 0007](docs/decisions/0007-surcouche-hermes.md), l'[audit du 12/11](docs/audits/AUDIT_INITIAL_2026-11-12.md), le [schéma d'intégration](docs/architecture/INTEGRATION-HERMES.md) et l'Issue #39. Accord de Maël et Stéphane requis ; le reste de ce README décrit l'état antérieur.
+
 ## Références
 
 - [Cadrage transmis, v0.1](docs/ATELIER-v0.1.md) : décisions retenues et propositions ouvertes.
