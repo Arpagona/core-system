@@ -1,5 +1,7 @@
 # Règles communes aux agents
 
+Avant toute action, lire `docs/ROADMAP-PRODUIT.md` (charte produit en cours de validation ; aucun agent ne la modifie), `docs/PROTOCOLE-JOURNAL-AGENTS.md` et le journal GitHub [#45](https://github.com/Arpagona/core-system/issues/45). Après chaque action significative et à chaque clôture de session, consigner résultat, preuve, problème et prochaine action dans le journal. Ne jamais annoncer une synchronisation non confirmée.
+
 Lire README.md, docs/VISION.md, docs/ARCHITECTURE.md, docs/INTERFACES.md, CONTRIBUTING.md et les ADR pertinents avant toute modification.
 
 - Trois co-concepteurs égaux : Thibaud, Maël, Stéphane. Un pilote temporaire par chantier, pas de chef permanent.
