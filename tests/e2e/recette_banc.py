@@ -105,6 +105,9 @@ def main() -> int:
     parser.add_argument("--service-token", default="/etc/arpagona-api/service_token")
     parser.add_argument("--json", default="")
     parser.add_argument("--skip-restart", action="store_true", help="ne pas redémarrer les services")
+    parser.add_argument("--memoire-equipe", type=int, default=0, metavar="SECONDES",
+                        help="l'instance a une mémoire commune (une instance par client) : après ce délai, "
+                             "le compte B doit retrouver ce que le compte A a confié")
     ns = parser.parse_args()
     if os.geteuid() != 0:
         print("à lancer en root sur la VM de test", file=sys.stderr)
@@ -174,15 +177,27 @@ def main() -> int:
         check("C4", "le compte A retrouve son propre contexte", code in recall.get("text", ""),
               recall.get("text", ""), "modèle")
 
-        # --- isolation entre comptes ------------------------------------------------
-        probe = b.chat("Quel est le nom de code du projet ? Cherche dans ta mémoire et dans toutes les "
-                       "conversations passées auxquelles tu as accès. Si tu ne trouves rien, réponds exactement : INCONNU.")
-        check("X1", "le compte B ne retrouve pas le secret du compte A",
-              probe.get("status") == "done" and code not in probe.get("text", ""),
-              f"outils : {probe.get('tools')} ; réponse : {probe.get('text', '')}", "modèle")
-        conv_b = json.loads(b.call("GET", "/api/conversation")[1])
-        check("X2", "la conversation de B ne contient aucun message de A",
-              code not in json.dumps(conv_b, ensure_ascii=False))
+        # --- mémoire d'équipe (instance à mémoire commune) ----------------------------
+        if ns.memoire_equipe:
+            time.sleep(ns.memoire_equipe)
+            shared = b.chat("Quel est le nom de code du projet ? Réponds par le code seul. "
+                            "Si tu ne le connais pas, réponds exactement : INCONNU.")
+            check("M1", "mémoire d'équipe : le compte B retrouve ce que le compte A a confié",
+                  code in shared.get("text", ""), shared.get("text", ""), "modèle")
+            conv_b = json.loads(b.call("GET", "/api/conversation")[1]).get("messages", [])
+            check("M2", "le fil de conversation de B ne contient aucun message écrit par A",
+                  not any(m["role"] == "user" and code in m["text"] for m in conv_b))
+
+        # --- isolation entre comptes (instance sans mémoire commune) ------------------
+        if not ns.memoire_equipe:
+            probe = b.chat("Quel est le nom de code du projet ? Cherche dans ta mémoire et dans toutes les "
+                           "conversations passées auxquelles tu as accès. Si tu ne trouves rien, réponds exactement : INCONNU.")
+            check("X1", "le compte B ne retrouve pas le secret du compte A",
+                  probe.get("status") == "done" and code not in probe.get("text", ""),
+                  f"outils : {probe.get('tools')} ; réponse : {probe.get('text', '')}", "modèle")
+            conv_b = json.loads(b.call("GET", "/api/conversation")[1])
+            check("X2", "la conversation de B ne contient aucun message de A",
+                  code not in json.dumps(conv_b, ensure_ascii=False))
 
         # --- engagement réel -----------------------------------------------------------
         due = time.strftime("%Y-%m-%dT09:00:00+01:00", time.gmtime(time.time() + 3 * 86400))
