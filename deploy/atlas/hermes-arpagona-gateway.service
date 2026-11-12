@@ -1,0 +1,29 @@
+[Unit]
+Description=Hermes Agent (officiel, v0.23.1 epingle) - instance de test ARPAGONA, API en boucle locale
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=hermes-arpagona
+Group=hermes-arpagona
+WorkingDirectory=/srv/hermes-arpagona
+Environment=HOME=/srv/hermes-arpagona
+Environment=HERMES_HOME=/srv/hermes-arpagona/.hermes
+Environment=PATH=/srv/hermes-arpagona/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/srv/hermes-arpagona/.local/bin/hermes gateway run
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ReadWritePaths=/srv/hermes-arpagona
+ProtectHome=yes
+InaccessiblePaths=/etc/agentcore /var/lib/agentcore /var/backups/agentcore
+MemoryMax=3G
+CPUQuota=200%
+TasksMax=512
+
+[Install]
+WantedBy=multi-user.target

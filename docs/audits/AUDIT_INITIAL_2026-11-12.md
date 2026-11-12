@@ -137,7 +137,7 @@ Conséquences pour la conception :
 
 ### Bloqueurs
 
-1. **Modèle et clé pour Hermès sur la VM.** Fournisseur, modèle, clé dédiée et plafond de dépense ne sont pas décidés. Sans eux, Hermès s'installe mais n'exécute rien.
+1. **Modèle et clé pour Hermès sur la VM.** Levé le 12/11/2026 : `deepseek-v4.1-flash` par `opencode-go`, comme l'ADR 0004, avec la clé déjà présente sur la VM. Reste ouvert : Hermès n'applique pas les plafonds de dépense de l'ADR 0004 (voir `deploy/atlas/README.md`).
 2. **Telegram.** Il faut un bot de test dédié et l'identifiant du ou des comptes autorisés.
 3. **Accord de Maël et Stéphane** sur l'ADR 0007. Sans lui, tout reste proposition et rien ne va sur `main`.
 
