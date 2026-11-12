@@ -14,6 +14,7 @@ import http.client
 import json
 import os
 import secrets
+import sqlite3
 import subprocess
 import sys
 import time
@@ -103,6 +104,9 @@ def main() -> int:
     parser.add_argument("--service-dir", default="/opt/arpagona/current/services/arpagona-api")
     parser.add_argument("--hermes-env", default="/srv/hermes-arpagona/.hermes/.env")
     parser.add_argument("--service-token", default="/etc/arpagona-api/service_token")
+    parser.add_argument("--echeance", action="store_true", default=True,
+                        help="éprouver le déclencheur d'échéance (actif par défaut)")
+    parser.add_argument("--sans-echeance", dest="echeance", action="store_false")
     parser.add_argument("--json", default="")
     parser.add_argument("--skip-restart", action="store_true", help="ne pas redémarrer les services")
     parser.add_argument("--memoire-equipe", type=int, default=0, metavar="SECONDES",
@@ -212,6 +216,39 @@ def main() -> int:
         check("E2", "l'engagement de A est invisible pour B", eng_b == [])
         check("E3", "aucun brouillon avant l'échéance",
               json.loads(a.call("GET", "/api/drafts")[1]).get("drafts", []) == [])
+
+        # --- échéance : le déclencheur prépare, l'humain décide -------------------------
+        if ns.echeance and mine:
+            engagement_id = mine[0]["id"]
+            # On force l'échéance dans le passé : c'est le seul moyen d'éprouver le déclencheur sans attendre des jours.
+            base = sqlite3.connect(ns.db, timeout=10)
+            base.execute("UPDATE engagements SET due_at = ? WHERE id = ?", (time.time() - 5, engagement_id))
+            base.commit(); base.close()
+            draft = None
+            limit = time.time() + 240
+            while time.time() < limit and not draft:
+                time.sleep(10)
+                pending = json.loads(a.call("GET", "/api/drafts")[1]).get("drafts", [])
+                draft = next((d for d in pending if d["engagement_id"] == engagement_id), None)
+            check("F1", "échéance atteinte : l'agent produit un brouillon soumis à validation",
+                  draft is not None and draft["statut"] == "en_attente" and len(draft["corps"]) > 40,
+                  json.dumps(draft, ensure_ascii=False)[:250] if draft else "aucun brouillon après 240 s", "modèle")
+            if draft:
+                b_pending = json.loads(b.call("GET", "/api/drafts")[1]).get("drafts", [])
+                check("F2", "le brouillon n'est visible que pour son destinataire",
+                      all(d["id"] != draft["id"] for d in b_pending))
+                check("F3", "approbation refusée si le contenu a changé",
+                      a.call("POST", "/api/drafts/decide",
+                             {"id": draft["id"], "approve": True, "empreinte": "0" * 64})[0] == 409)
+                status, raw, _ = a.call("POST", "/api/drafts/decide",
+                                        {"id": draft["id"], "approve": True, "empreinte": draft["empreinte"]})
+                decided = json.loads(raw) if status == 200 else {}
+                check("F4", "approbation explicite : approuvé et non envoyé",
+                      status == 200 and decided.get("statut") == "approuve"
+                      and "non envoyé" in (decided.get("livraison") or ""), raw[:200])
+                check("F5", "aucune seconde décision possible sur le même brouillon",
+                      a.call("POST", "/api/drafts/decide",
+                             {"id": draft["id"], "approve": False, "empreinte": draft["empreinte"]})[0] == 409)
 
         # --- persistance ------------------------------------------------------------------
         if not ns.skip_restart:
