@@ -1,3 +1,0 @@
-[workspace]
-members = ["experiments/contrat", "experiments/demo", "crates/agentcore-types", "crates/agentcore-core", "crates/agentcore"]
-resolver = "2"
