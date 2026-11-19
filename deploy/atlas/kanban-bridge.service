@@ -1,0 +1,39 @@
+[Unit]
+Description=Passerelle Kanban ARPAGONA (CLI officielle, boucle locale)
+After=network.target
+
+[Service]
+Type=simple
+User=hermes-arpagona
+Group=hermes-arpagona
+WorkingDirectory=/opt/arpagona/current/services/kanban-bridge
+Environment=HOME=/srv/hermes-arpagona
+Environment=HERMES_HOME=/srv/hermes-arpagona/.hermes
+Environment=KANBAN_TOKEN_FILE=/srv/hermes-arpagona/.hermes/arpagona_kanban_token
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 bridge.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/hermes-arpagona/.hermes
+InaccessiblePaths=/etc/arpagona-api /var/lib/arpagona-api /etc/agentcore /var/lib/agentcore /var/backups/agentcore
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=localhost
+MemoryMax=512M
+CPUQuota=100%
+TasksMax=64
+
+[Install]
+WantedBy=multi-user.target

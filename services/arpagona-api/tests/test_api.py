@@ -238,6 +238,54 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(len(self.engine.keys), 2)
         self.assertEqual(len(set(self.engine.keys)), 2)
 
+    def test_kanban_sans_session(self):
+        anon = Client(self.port)
+        for method, path, body in [('GET', '/api/kanban/list', None),
+                                   ('GET', '/api/kanban/show?id=t_16192f3a', None),
+                                   ('POST', '/api/kanban/create', {'title': 'Mission'})]:
+            self.assertEqual(anon.call(method, path, body)[0], 401)
+
+    def test_kanban_non_configure_chat_preserve(self):
+        alice = Client(self.port)
+        alice.login('alice', PASSWORD_A)
+        self.assertEqual(alice.call('GET', '/api/kanban/list')[0], 503)
+        self.assertEqual(alice.call('POST', '/api/kanban/create', {'title': 'Mission'})[0], 503)
+        self.assertEqual(alice.call('GET', '/api/conversation')[0], 200)
+        self.assertEqual(alice.call('POST', '/api/chat', {'text': 'bonjour'})[0], 200)
+
+    def test_kanban_relais_et_audit(self):
+        from unittest.mock import Mock
+        self.app.kanban = Mock()
+        self.app.kanban.call.return_value = (200, {'status': 'ok'})
+        alice = Client(self.port)
+        alice.login('alice', PASSWORD_A)
+        for path, op, data in [('/api/kanban/list', 'list', {}),
+                               ('/api/kanban/show?id=t_16192f3a', 'show', {'id': 't_16192f3a'})]:
+            self.assertEqual(alice.call('GET', path)[0], 200)
+            self.app.kanban.call.assert_called_with(op, data)
+        for op in ('create', 'comment', 'complete', 'block', 'unblock', 'archive'):
+            data = {'title': 'Mission'} if op == 'create' else {'id': 't_16192f3a'}
+            status, raw, _ = alice.call('POST', '/api/kanban/' + op, data)
+            self.assertEqual((status, json.loads(raw)), (200, {'status': 'ok'}))
+            self.app.kanban.call.assert_called_with(op, data)
+        actions = [row['action'] for row in self.store.audit_rows()]
+        self.assertEqual(actions, ['connexion', 'kanban_list', 'kanban_show'] + ['kanban_' + op for op in
+                         ('create', 'comment', 'complete', 'block', 'unblock', 'archive')])
+        self.assertEqual(alice.call('POST', '/api/kanban/dispatch', {})[0], 400)
+        self.assertEqual(alice.call('POST', '/api/kanban/create', {'title': 'x'}, marker=False)[0], 400)
+
+    def test_kanban_erreurs_controlees(self):
+        from unittest.mock import Mock
+        self.app.kanban = Mock()
+        alice = Client(self.port)
+        alice.login('alice', PASSWORD_A)
+        for status in (400, 502, 503):
+            self.app.kanban.call.return_value = (status, {'error': 'indisponible'})
+            self.assertEqual(alice.call('GET', '/api/kanban/list')[0], status)
+            self.assertEqual(alice.call('POST', '/api/kanban/create', {'title': 'Mission'})[0], status)
+        self.assertEqual([row['action'] for row in self.store.audit_rows()],
+                         ['connexion'] + ['kanban_list', 'kanban_create'] * 3)
+
     def test_journal(self):
         alice = Client(self.port)
         alice.login("alice", "faux-mot-de-passe")

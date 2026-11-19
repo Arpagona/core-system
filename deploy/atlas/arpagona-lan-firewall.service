@@ -1,0 +1,14 @@
+[Unit]
+Description=Restriction LAN du port Mission Control (ne touche pas SSH)
+Before=arpagona-api.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/arpagona-lan.nft
+# Pas d'ExecStop : arrêter l'unité ne doit jamais ouvrir le port.
+
+[Install]
+WantedBy=multi-user.target

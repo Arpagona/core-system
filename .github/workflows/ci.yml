@@ -12,6 +12,8 @@ jobs:
       - name: Tests API
         working-directory: services/arpagona-api
         run: /usr/bin/python3 -m unittest discover -s tests
+      - name: Tests passerelle Kanban
+        run: /usr/bin/python3 -m unittest discover -s services/kanban-bridge/tests
       - name: Compiler le plugin
         run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py
       - name: Contrôles de sécurité ciblés
