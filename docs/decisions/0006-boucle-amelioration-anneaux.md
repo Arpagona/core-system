@@ -1,7 +1,7 @@
 # ADR 0006 — Auto-amélioration du noyau par anneaux, sans auto-modification
 
 **Date :** 11 novembre 2026
-**Statut :** **PROPOSÉ** — demande de Thibaud du 11/11/2026 ; introduit le contrat **C-10** (`docs/contrats/C-10-BOUCLE-AMELIORATION.md`) ; **accord de Maël et Stéphane requis** avant tout développement dépendant. L'absence de réponse ne vaut pas accord.
+**Statut :** REMPLACÉ/HISTORIQUE par ADR 0007
 **Référence Issue :** à créer lors de la revue (voir `GUIDE_NOUVELLE_TACHE.md`).
 
 ## Contexte

@@ -1,7 +1,7 @@
 # ADR 0008 — Une instance Hermès par client, mémoire en graphe Hindsight
 
 **Date :** 12 novembre 2026
-**Statut :** **PROPOSÉ** — orientation de Thibaud du 12/11/2026. **Accord de Maël et Stéphane requis.**
+**Statut :** ACCEPTÉ — validé par Thibaud le 19/11/2026 ; Maël et Stéphane informés
 Complète l'ADR 0007 (surcouche Hermès) et précise l'ADR 0002 (isolation des clients) sur le point de la mémoire.
 
 ## Contexte

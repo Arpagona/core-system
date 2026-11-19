@@ -1,7 +1,7 @@
 # ADR 0007 — Agent Core devient une surcouche d'Hermès Agent
 
 **Date :** 12 novembre 2026
-**Statut :** **PROPOSÉ** — mandat produit de Thibaud du 12/11/2026 (Issue #39). **Accord de Maël et Stéphane requis.** Tant qu'il n'est pas donné, rien de cet ADR n'est une décision de l'atelier.
+**Statut :** ACCEPTÉ — validé par Thibaud le 19/11/2026 ; Maël et Stéphane informés
 
 S'il est accepté, cet ADR remplace l'ADR 0001 (noyau Rust) et rend sans objet l'ADR 0005 (reprise de code Hermès dans le noyau). Les ADR 0002 (isolation des clients) et 0004 (modèle cloud) restent valables. Les ADR 0003 et 0006 deviennent historiques.
 

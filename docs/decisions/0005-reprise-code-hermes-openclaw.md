@@ -1,7 +1,7 @@
 # ADR 0005 — Reprise de code de Hermes Agent et OpenClaw
 
 **Date :** 10 novembre 2026
-**Statut :** **PROPOSÉ** — demande de Thibaud du 10/11/2026 ; modifie la décision 10 du CDC (`ARP-DEV-CDC-001` §2) et la règle d'`AGENTS.md` sur l'import de code ; **accord de Maël et Stéphane requis**.
+**Statut :** REMPLACÉ/HISTORIQUE par ADR 0007
 
 ## Contexte
 
