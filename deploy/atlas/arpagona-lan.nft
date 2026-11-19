@@ -1,3 +1,5 @@
+table inet arpagona_lan
+delete table inet arpagona_lan
 table inet arpagona_lan {
  chain input {
   type filter hook input priority -10; policy accept;
