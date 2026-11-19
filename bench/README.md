@@ -1,6 +1,8 @@
-# Banc de régression — contrat C-10, anneau 0
+# Banc de régression historique — contrat C-10, anneau 0
 
-**Statut : PROPOSÉ, non approuvé à trois** (cf. `docs/decisions/0006-boucle-amelioration-anneaux.md`, `docs/contrats/C-10-BOUCLE-AMELIORATION.md`).
+Conservé pour réévaluation : les cas et commandes décrivent l’ancien noyau et ne valident pas le produit actuel.
+
+**Statut : PROPOSÉ, non approuvé à trois** (cf. `docs/decisions/0006-boucle-amelioration-anneaux.md`, `docs/legacy/contrats/C-10-BOUCLE-AMELIORATION.md`).
 
 Ce banc mesure la **qualité des livrables** que la vérification structurelle (C-06) ne voit pas. Il est hors ligne, déterministe, sans modèle, et ne modifie rien : c'est un **instrument de mesure**, pas une boucle d'amélioration.
 

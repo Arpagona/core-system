@@ -1,6 +1,6 @@
 # Schéma d'intégration ARPAGONA ↔ Hermès Agent
 
-**Statut : PROPOSÉ** (ADR 0007, Issue #39). Les routes Hermès citées viennent de la documentation de la version 0.23.1 ; elles restent à essayer une par une sur le banc de test avant d'être retenues.
+**Statut : schéma proposé, non entièrement implémenté** (ADR 0007 accepté, Issue #39). Les routes Hermès citées viennent de la documentation de la version 0.23.1 ; elles restent à essayer une par une sur le banc de test avant d'être retenues.
 
 ## Vue d'ensemble
 
