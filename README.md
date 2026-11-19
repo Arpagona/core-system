@@ -36,4 +36,16 @@ cd services/arpagona-api
 /usr/bin/python3 -m unittest discover -s tests
 ```
 
+## Mission Control
+
+- Chat au centre : une conversation unique par compte, conservée entre les visites.
+- Kanban : celui de l'instance Hermès du client, lu et modifié via `services/kanban-bridge/` (service local 127.0.0.1:8701, jeton dédié, liste blanche d'opérations sur la CLI officielle `hermes kanban`). Les cartes créées depuis l'interface n'ont pas d'affectation : aucun agent n'est déclenché.
+- Approbations et Engagements en onglets ; mobile : chat d'abord.
+
+### Accès réseau local (banc de test uniquement)
+
+`sudo bash /opt/arpagona/current/deploy/atlas/enable-mission-control-lan.sh` ouvre le port 8700 au seul réseau 192.168.68.0/24 (table nftables `arpagona_lan`, sans toucher SSH) et arme un retour arrière automatique à 180 s ; arrêter `arpagona-lan-rollback.timer` après vérification. Accès en HTTP, cookie non `Secure` : **mode test**. HTTPS obligatoire avant tout client.
+
+Comptes : `python3 -m arpagona_api.manage add-user|set-password|del-user <login> --password-stdin` (en tant que `arpagona-api`).
+
 Pour le déploiement et les limites du banc, voir [deploy/atlas/README.md](deploy/atlas/README.md). Décisions : [ADR 0007](docs/decisions/0007-surcouche-hermes.md), [ADR 0008](docs/decisions/0008-instance-par-client-memoire-hindsight.md).
