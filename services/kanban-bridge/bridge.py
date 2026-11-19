@@ -20,7 +20,7 @@ def text(value, limit, required=True):
 def arguments(op, data):
     if op not in OPS or not isinstance(data, dict):
         raise ValueError('opération interdite')
-    allowed = {'title', 'body'} if op == 'create' else ({'id', 'text'} if op in {'comment', 'block'} else ({'id'} if op != 'list' else set()))
+    allowed = {'title', 'body'} if op == 'create' else ({'id', 'text', 'author'} if op == 'comment' else {'id', 'text'} if op == 'block' else ({'id'} if op != 'list' else set()))
     if set(data) - allowed:
         raise ValueError('champ interdit')
     args = [CLI, 'kanban', op]
@@ -34,6 +34,8 @@ def arguments(op, data):
         raise ValueError('identifiant invalide')
     if op == 'show':
         return args + [ident, '--json']
+    if op == 'comment' and 'author' in data:
+        args.append('--author=' + text(data.get('author'), 80))
     if op in {'comment', 'block'}:
         return args + ['--', ident, text(data.get('text'), 8000)]
     return args + ['--', ident]

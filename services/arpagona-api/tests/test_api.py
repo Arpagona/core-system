@@ -265,9 +265,12 @@ class ApiTest(unittest.TestCase):
             self.app.kanban.call.assert_called_with(op, data)
         for op in ('create', 'comment', 'complete', 'block', 'unblock', 'archive'):
             data = {'title': 'Mission'} if op == 'create' else {'id': 't_16192f3a'}
-            status, raw, _ = alice.call('POST', '/api/kanban/' + op, data)
+            sent = dict(data, author='Intrus') if op == 'comment' else data
+            status, raw, _ = alice.call('POST', '/api/kanban/' + op, sent)
             self.assertEqual((status, json.loads(raw)), (200, {'status': 'ok'}))
-            self.app.kanban.call.assert_called_with(op, data)
+            # L'auteur d'un commentaire est imposé par le compte connecté.
+            expected = dict(data, author='Alice Fictive') if op == 'comment' else data
+            self.app.kanban.call.assert_called_with(op, expected)
         actions = [row['action'] for row in self.store.audit_rows()]
         self.assertEqual(actions, ['connexion', 'kanban_list', 'kanban_show'] + ['kanban_' + op for op in
                          ('create', 'comment', 'complete', 'block', 'unblock', 'archive')])

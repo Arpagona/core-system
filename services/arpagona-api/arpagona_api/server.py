@@ -194,6 +194,10 @@ def make_handler(app: App):
                 data = {"id": query["id"][0]} if "id" in query else {}
             if op not in allowed or data is None:
                 return self._json(400, {"error": "opération invalide"})
+            data.pop("author", None)
+            if op == "comment":
+                # L'auteur vient du compte connecté, jamais du navigateur.
+                data["author"] = user["display_name"]
             client = getattr(app, "kanban", None)
             status, result = client.call(op, data) if client else (503, {"error": "Kanban indisponible"})
             app.store.audit(user["id"], "kanban_" + op, str(status) + " " + str(data.get("id", ""))[:64])

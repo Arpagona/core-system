@@ -24,6 +24,8 @@ class BridgeTest(unittest.TestCase):
              ['--body=un corps', '--json', '--', '--assignee=intrus']),
             ('comment', {'id': ID, 'text': '--option; $(touch /danger)'},
              ['--', ID, '--option; $(touch /danger)']),
+            ('comment', {'id': ID, 'text': 'vu', 'author': 'Thibaud'},
+             ['--author=Thibaud', '--', ID, 'vu']),
             ('block', {'id': ID, 'text': 'attente'}, ['--', ID, 'attente']),
         ]
         cases += [(op, {'id': ID}, ['--', ID]) for op in ('complete', 'unblock', 'archive')]
@@ -38,7 +40,9 @@ class BridgeTest(unittest.TestCase):
         bad = [('create', {'title': 'ok', 'assignee': 'agent'}),
                ('create', {'title': 'x' * 201}), ('create', {'title': ' '}),
                ('create', {'title': 'a\x00b'}), ('dispatch', {}),
-               ('list;id', {}), ('list', {'tenant': 'autre'}), ('list', [])]
+               ('list;id', {}), ('list', {'tenant': 'autre'}), ('list', []),
+               ('block', {'id': ID, 'text': 'x', 'author': 'intrus'}),
+               ('comment', {'id': ID, 'text': 'x', 'author': 'a' * 81})]
         bad += [('show', {'id': value}) for value in
                 ('--help', 't_1234567', 't_xyz12345', 't_16192f3a;id', '../test', 't_' + 'a' * 33, None)]
         for op, data in bad:
