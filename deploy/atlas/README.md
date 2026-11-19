@@ -1,6 +1,6 @@
 # Banc de test Atlas — Hermès Agent officiel
 
-**Statut : environnement de test, proposition (ADR 0007, Issue #39).** Aucune production, aucune donnée réelle.
+**Statut : environnement de test (ADR 0007, Issue #39).** Aucune production, aucune donnée réelle.
 
 ## Ce qui est installé
 
@@ -43,7 +43,7 @@ Essais faits sur la VM, par l'API en boucle locale, avec des données fictives.
 
 ## Limites connues
 
-1. **Aucun plafond de dépense n'est appliqué.** Les plafonds de l'ADR 0004 (0,50 $ par mission, 20 $ par 24 h) étaient appliqués par le noyau Rust. Hermès n'en impose pas ici. Chaque exécution coûte environ 12 500 jetons d'entrée, même pour une question d'un mot.
+1. **Aucun plafond de dépense n'est appliqué.** Les plafonds de l'ADR 0004 (0,50 $ par mission, 20 $ par 24 h) étaient appliqués par l’ancien noyau. Hermès n'en impose pas ici. Chaque exécution coûte environ 12 500 jetons d'entrée, même pour une question d'un mot.
 2. **Clé du modèle partagée.** L'instance utilise la clé `opencode-go` déjà présente sur la VM, la même que l'ancien Agent Core. Elle n'a pas été changée (décision du 12/11/2026).
 3. **Outils non restreints.** L'agent dispose de la liste d'outils par défaut d'Hermès, dont le terminal, dans les limites du compte de service et du confinement systemd. La restriction des outils de la plateforme API reste à faire.
 4. **Arrêt signalé en échec.** À l'arrêt, le processus sort avec le code 1 et systemd note `failed`. Sans effet constaté sur le redémarrage.

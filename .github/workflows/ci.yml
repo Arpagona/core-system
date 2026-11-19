@@ -1,0 +1,22 @@
+name: Validation produit
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Tests API
+        working-directory: services/arpagona-api
+        run: /usr/bin/python3 -m unittest discover -s tests
+      - name: Compiler le plugin
+        run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py
+      - name: Contrôles de sécurité ciblés
+        run: /usr/bin/python3 scripts/security_checks.py
+      - name: Vérifier JavaScript
+        run: node --check apps/mission-control-web/app.js
+      - name: Vérifier les espaces
+        run: git diff --check
