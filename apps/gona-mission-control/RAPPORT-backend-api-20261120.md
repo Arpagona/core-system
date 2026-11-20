@@ -1,27 +1,30 @@
-# Backend API — état partiel, 20 novembre 2026
+# Backend « api » (sans Telegram) — 20 novembre 2026
 
-**Non livrable en l’état : le chat sans Telegram n’est pas implémenté.** Le module ajouté est uniquement un transport HTTP ; il n’est pas branché à `server.py`. Le mode Telegram existant est inchangé. Ne pas configurer `GONA_MC_BACKEND=api` en pensant disposer de ce backend.
+**État : implémenté, testé avec un faux Hermes ET validé sur le vrai Hermes d'Atlas (20/11/2026, 3 tours, quelques centimes).**
 
-## Étape réalisée et vérifiée
+## Fonctionnement (`GONA_MC_BACKEND=api`)
+- Conversation persistante en SQLite (`GONA_MC_DATA_DIR/chat.db`), session Hermes stable par conversation.
+- Envoi idempotent (`submission_id`) : un doublon ne relance pas de tour, y compris après redémarrage.
+- Streaming SSE identique au mode Telegram (writing, delta, tool, tool_done, complete), reprise du texte en cours à la reconnexion.
+- `/new` (nouvelle conversation), `/stop` (route `/v1/runs/{id}/stop`), `/status`, `/help`. `/model`, `/reasoning`, `/restart` : refus explicite « pas pris en charge par cette instance ».
+- Moteur indisponible : message lisible, pas de blocage « busy ». Tour interrompu par un redémarrage : jamais rejoué.
+- Mode Telegram (défaut) inchangé.
 
-- `backend_api.HermesClient` transmet une création de run avec `input`, `session_id` et `Idempotency-Key`, lit l’état et le SSE, et propose un appel de stop. Lecture optionnelle d’un fichier de clé, pas de clé journalisée. La capacité d’arrêt doit être vérifiée sur l’instance cible.
-- Quatre tests avec faux serveur HTTP vérifient le protocole de transport, un identifiant de run invalide, un moteur injoignable et une clé inaccessible. Ils ne prouvent pas l’idempotence du backend MC ni un chat complet.
-- `python3 -m unittest discover -s tests` : 32 tests réussis, dont les 28 préexistants ; `node --check web/app.js` : réussi.
-- Aucun appel à un modèle ni écriture sur Atlas, aucun redémarrage de service ou opération sur la conversation Telegram.
+## Variables
+`GONA_MC_BACKEND` (telegram|api), `GONA_MC_HERMES_URL` (défaut http://127.0.0.1:8642), `GONA_MC_HERMES_KEY_FILE`, `GONA_MC_DATA_DIR`.
 
-## Vérification des références
+## Preuves
+46 tests unittest OK (Ryzen et VM agentcore-dev), `node --check web/app.js` OK. Faux serveur Hermes : envoi, idempotence, flux SSE via le vrai serveur HTTP, /new, /stop, panne moteur, redémarrage.
 
-- Client Atlas : `POST /v1/runs` avec clé d’idempotence, `GET /v1/runs/{id}`, SSE `GET /v1/runs/{id}/events`. Son serveur relaie `message.delta`, `tool.started`, `tool.completed` et récupère le résultat final via l’état du run. Le client Atlas lu n’implémente ni stop ni cancel ; cela ne prouve pas l’absence d’une route côté serveur Atlas.
-- Store Atlas : une conversation par utilisateur, `hermes_session_id` aléatoire conservé en SQLite ; le client n’impose pas cet identifiant.
-- Source Hermes locale, potentiellement plus récente : `gateway/platforms/api_server_runs.py` déclare `POST /v1/runs/{run_id}/stop` ; réponse possible `stopping`, ce qui signifie interruption demandée et non interruption déjà confirmée. Les événements ont les champs `event`, `run_id`, `timestamp`, notamment `message.delta`, `tool.started`, `tool.completed` et `run.<statut>`. Le code traite également la continuation de session. Ces observations ne démontrent pas les capacités de la version Atlas v0.23.1.
+## Essai réel sur Atlas (Hermes v0.23.1, VM agentcore-dev, port 8711 temporaire, arrêté ensuite)
+- Tour 1 « réponds : bleu » -> `bleu` ; événements writing, delta, complete.
+- Tour 2 « quel mot ? » -> `bleu` : la session Hermes est bien conservée entre les tours.
+- Doublon (même submission_id) -> `duplicate`, aucun nouveau tour. Historique et /status corrects.
+- /stop pendant un tour long -> état `cancelled`, route /stop présente sur Atlas.
+- /new -> nouvelle conversation vide.
+- Clé API lue via sudo dans /dev/shm, jamais affichée, détruite après l'essai ; console 8700 et services intacts.
 
-## À faire impérativement
-
-- Implémenter le stockage SQLite configurable, l’idempotence atomique, les conversations et leur bascule `/new`, la gestion des reprises et des états incertains, et le flux SSE partagé entre clients sans perte lors des reconnexions.
-- Brancher explicitement `server.py` et l’UI neutre selon `GONA_MC_BACKEND`, en conservant Telegram par défaut ; implémenter les commandes avec réponses honnêtes et éviter tout appel au gateway Telegram en mode API.
-- Ajouter les tests demandés de bout en bout : chat, idempotence concurrente et après redémarrage, streaming navigateur, arrêt, `/new`, historique et indisponibilité sans blocage busy.
-- Valider avec le vrai Hermes d’Atlas lorsque cela sera autorisé : version et événements effectifs, authentification, disponibilité de `/stop`, persistance et reprise des sessions ; la clé est lisible par root seulement. Aucun test réel n’a été réalisé ici.
-
-## Fichiers créés
-
-`backend_api.py`, `tests/test_backend_api_transport.py`, ce rapport. Les sauvegardes non suivies préexistantes ont été laissées intactes.
+## Limites connues
+- Pas d'événements `tool` observés (aucun outil utilisé pendant l'essai) ; texte partiel perdu si /stop avant le premier delta.
+- Pièces jointes, approbations/clarifications : non pris en charge en mode api. /model, /reasoning, /restart : refus explicite.
+- Installation en service permanent sur Atlas non faite (copie dans ~agentcore/gona-mission-control-alpha.new).
