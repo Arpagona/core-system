@@ -18,14 +18,14 @@ install)
   # cle du moteur Hermes de test : copiee depuis l'API existante, lisible par gona-mc seulement
   install -m 640 -o root -g gona-mc /etc/arpagona-api/hermes_key $ETC/hermes_key
   chown root:gona-mc $ETC/token; chmod 640 $ETC/token
-  PREV=$(readlink -f $BASE/current || true)
-  [ -n "$PREV" ] && ln -sfn "$PREV" $BASE/previous
+  if [ -e $BASE/current ]; then ln -sfn "$(readlink -f $BASE/current)" $BASE/previous; fi
   ln -sfn $REL $BASE/current
   install -m 644 $REL/deploy/atlas/$UNIT /etc/systemd/system/$UNIT
   systemctl daemon-reload; systemctl enable $UNIT >/dev/null 2>&1; systemctl restart $UNIT
   sleep 2; systemctl is-active $UNIT; echo "release: $REL" ;;
 rollback)
-  [ -L $BASE/previous ] || { echo "pas de version precedente"; exit 1; }
-  ln -sfn "$(readlink -f $BASE/previous)" $BASE/current; systemctl restart $UNIT; sleep 2; systemctl is-active $UNIT ;;
+  [ -e $BASE/previous ] || { echo "pas de version precedente"; exit 1; }
+  TARGET=$(readlink -f $BASE/previous); CUR=$(readlink -f $BASE/current)
+  ln -sfn "$CUR" $BASE/previous; ln -sfn "$TARGET" $BASE/current; systemctl restart $UNIT; sleep 2; systemctl is-active $UNIT ;;
 *) echo "usage: $0 install <archive> | rollback"; exit 2 ;;
 esac
