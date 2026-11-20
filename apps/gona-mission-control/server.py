@@ -185,6 +185,38 @@ def command(sid, text):
     return old_api('/api/channel/command', {'id': sid, 'profile': config.PROFILE_NAME, 'command': text.strip()[:300]})
 
 
+def idle_state(sid):
+    """True si plus aucun tour n'est en cours (lecture seule : premier « snapshot » du flux, puis fermeture)."""
+    if API:
+        return not (API._live.get(sid) or {}).get('running')
+    if not HERMES_PY.is_file() or not LIVE.is_file():
+        return False
+    env = dict(os.environ, HERMES_HOME=str(PROFILE), PYTHONPATH=str(HERMES))
+    proc = subprocess.Popen([str(HERMES_PY), str(LIVE)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                            stderr=subprocess.DEVNULL, text=True, env=env)
+    try:
+        proc.stdin.write(json.dumps({'id': sid, 'op': 'stream'}) + '\n'); proc.stdin.close()
+        end = time.time() + 15
+        while time.time() < end:
+            ready, _, _ = select.select([proc.stdout], [], [], 1)
+            if not ready:
+                continue
+            line = proc.stdout.readline()
+            if not line:
+                return False
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get('type') == 'snapshot':
+                return not ev.get('running') and not ev.get('prompts') and not ev.get('pending')
+        return False
+    finally:
+        proc.terminate()
+        try: proc.wait(timeout=2)
+        except Exception: proc.kill()
+
+
 def channels():
     if API:
         return API.channels()
@@ -337,6 +369,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'name':'Thibaud · GONA / gpt5', 'backend': 'api' if API else 'telegram'})
             if u.path == '/api/channels':
                 return self.send(200, {'channels':channels()})
+            if u.path == '/api/channel/idle':
+                sid = q.get('id', [''])[0]
+                valid_session(sid)
+                return self.send(200, {'idle': idle_state(sid)})
             if u.path == '/api/commands':
                 return self.send(200, {'commands': COMMANDS})
             if u.path == '/api/stream':

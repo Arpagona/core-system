@@ -14,6 +14,7 @@ function restoreBubbles() {
 restoreBubbles();
 let busy = false, session = null, snapshot = null, missionFilter = "", lastMessages = null;
 let stream = null, streamTimer = null, lastToolLine = null, commands = [], menuItems = [], menuIndex = 0;
+let lastStreamSign = Date.now(), lastBusyOn = 0;
 const PENDING = "arpagona-alpha-pending";
 const escapeHtml = text => String(text == null ? "" : text).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt = text => typeof renderMarkdown === "function" ? renderMarkdown(text) : escapeHtml(text);
@@ -262,6 +263,7 @@ function settleControls(kind, promptId) {
 }
 
 function handleStream(data) {
+  lastStreamSign = Date.now();
   if(!stream) return;
   if(data.type === "snapshot") {
     for(const p of data.prompts || []) if(!findControl(p.prompt_id)) controlCard(p);
@@ -761,6 +763,16 @@ $("create-card").addEventListener("submit", async ev => {
   catch(err) { $("card-error").textContent = err.message; }
   finally { btn.disabled = false; }
 });
+// Chien de garde : si « occupé » dure sans aucun signe du flux et que le serveur dit qu'aucun tour n'est en cours, on libère le bouton.
+setInterval(async()=>{
+  if($("app-view").hidden || !busy) { lastBusyOn = 0; return; }
+  if(!lastBusyOn) lastBusyOn = Date.now();
+  if(Date.now() - Math.max(lastBusyOn, lastStreamSign) < 45000) return;
+  try {
+    const r = await api("/api/channel/idle?id=" + encodeURIComponent(session));
+    if(r && r.idle) { sessionStorage.removeItem(PENDING); if(stream) stream.active = false; setBusy(false, ""); lastBusyOn = 0; await loadConversation(true).catch(()=>{}); }
+  } catch(e) {}
+}, 10000);
 setInterval(async()=>{
   if($("app-view").hidden) return;
   try { if(!busy && !sessionStorage.getItem(PENDING) && await syncSession()) return;
