@@ -11,6 +11,10 @@ import unittest
 from unittest.mock import patch, Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import os
+_tok = tempfile.NamedTemporaryFile('w', suffix='.token', delete=False); _tok.write('fixture-token'); _tok.close()
+os.environ.setdefault('GONA_MC_TOKEN_FILE', _tok.name)
+os.environ.setdefault('GONA_MC_LEGACY_TOKEN_FILE', _tok.name)
 import server
 import bridge
 
@@ -21,12 +25,16 @@ ID = 't_12345678'
 class AlphaTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = tempfile.TemporaryDirectory(dir='/home/thibaud/.hermes/profiles/gpt5/cache/scratch')
+        cls.tmp = tempfile.TemporaryDirectory()
         cls.root = Path(cls.tmp.name)
         # Snapshot réel copié par l'API backup SQLite, jamais de mutation sur la source.
-        source = sqlite3.connect('file:/home/thibaud/.hermes/kanban.db?mode=ro', uri=True)
-        copied = sqlite3.connect(cls.root / 'copied.db')
-        source.backup(copied); source.close(); copied.close()
+        real_db = Path.home() / '.hermes/kanban.db'
+        if real_db.exists():
+            source = sqlite3.connect(real_db.as_uri() + '?mode=ro', uri=True)
+            copied = sqlite3.connect(cls.root / 'copied.db')
+            source.backup(copied); source.close(); copied.close()
+        else:
+            c = sqlite3.connect(cls.root / 'copied.db'); c.execute('create table tasks(id text primary key,title text,created_at integer)'); c.close()
         # Fixture dédiée pour tester précisément les états et les injections.
         c = sqlite3.connect(cls.root / 'fixture-source.db')
         c.execute('create table tasks(id text primary key,title text,body text,status text,tenant text,block_kind text,created_at integer,assignee text)')

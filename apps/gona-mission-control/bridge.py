@@ -7,7 +7,8 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location('atlas_bridge', Path(__file__).parent / 'upstream/bridge.py')
 atlas = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(atlas)
-CLI = '/home/thibaud/.local/bin/hermes'
+import config
+CLI = config.HERMES_CLI
 OPS = {'list', 'show', 'create'}
 
 

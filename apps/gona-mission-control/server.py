@@ -19,17 +19,18 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlsplit, urlencode
 import bridge
 import gate
+import config
 
 ROOT = Path(__file__).resolve().parent
-PROFILE = Path('/home/thibaud/.hermes/profiles/gpt5')
-TOKEN_FILE = PROFILE / 'gona-mission-control/token'
+PROFILE = config.PROFILE
+TOKEN_FILE = config.TOKEN_FILE
 TOKEN = TOKEN_FILE.read_text().strip()
 COOKIE = hashlib.sha256(('gona-mc-v1:' + TOKEN).encode()).hexdigest()
-OLD = PROFILE / 'mission-control/token'
+OLD = config.LEGACY_TOKEN_FILE
 ASK = PROFILE / 'scripts/ask.py'
-KANBAN_DB = Path('/home/thibaud/.hermes/kanban.db')
+KANBAN_DB = config.KANBAN_DB
 MAPPING = PROFILE / 'refonte/loop/kanban_map.json'
-HERMES = Path('/home/thibaud/.openclaw/workspace/hermes-agent')
+HERMES = config.HERMES_SRC
 HERMES_PY = HERMES / 'venv/bin/python'
 LIVE = ROOT / 'gateway_live.py'
 COMMANDS = [
@@ -41,9 +42,8 @@ COMMANDS = [
     {'command': '/restart', 'description': 'Redémarrer le gateway quand il est inactif', 'arg': False},
     {'command': '/help', 'description': 'Lister les commandes disponibles', 'arg': False},
 ]
-MEDIA_ROOTS = (ROOT, Path('/home/thibaud/projects'), Path('/home/thibaud/Pictures'),
-               Path('/home/thibaud/Downloads'), Path('/home/thibaud/Desktop'), Path('/tmp'),
-               PROFILE / 'cache')
+MEDIA_ROOTS = (ROOT, config.HOME / 'projects', config.HOME / 'Pictures', config.HOME / 'Downloads',
+               config.HOME / 'Desktop', Path('/tmp'), PROFILE / 'cache') + config.MEDIA_EXTRA
 IMAGE_EXT = {'.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
              '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp'}
 DENIED_MEDIA_NAMES = {'.env', '.ssh', '.gnupg', '.netrc', 'token', 'credentials',
@@ -66,7 +66,7 @@ def read_kanban(ident=None):
 
 
 def old_api(path, body=None):
-    req = urllib.request.Request('http://127.0.0.1:8790' + path,
+    req = urllib.request.Request(config.LEGACY_URL + path,
         data=json.dumps(body).encode() if body is not None else None,
         headers={'Content-Type':'application/json', 'X-MC-Token':OLD.read_text().strip()})
     with urllib.request.urlopen(req, timeout=80) as response:
@@ -79,7 +79,7 @@ def old_api(path, body=None):
 def voice_proxy(path, data, ctype):
     """Voix : relais binaire vers l'ancien Mission Control (8790) — transcription locale faster-whisper,
     synthèse Edge (voix de mission-control/voice.json, fr-CA) avec repli Piper. Rien n'est stocké ici."""
-    req = urllib.request.Request('http://127.0.0.1:8790' + path, data=data, method='POST',
+    req = urllib.request.Request(config.LEGACY_URL + path, data=data, method='POST',
         headers={'Content-Type': ctype, 'X-MC-Token': OLD.read_text().strip()})
     try:
         with urllib.request.urlopen(req, timeout=150) as r:
@@ -159,7 +159,7 @@ def command(sid, text):
                 'puis redémarre (comme /restart dans Telegram). Le chat revient seul dans une minute environ.'}
     if name in ('new', 'reset'):
         # Plugin mc-new (profil gpt5) : appelle le vrai /new du gateway sur la session Telegram vivante.
-        hermes = '/home/thibaud/.openclaw/workspace/hermes-agent'
+        hermes = str(HERMES)
         env = dict(os.environ, HERMES_HOME=str(PROFILE), PYTHONPATH=hermes)
         try:
             r = subprocess.run([hermes + '/venv/bin/python', str(ROOT / 'gateway_new.py')], input=json.dumps({'id': sid}),
@@ -174,11 +174,11 @@ def command(sid, text):
         if 'FileNotFound' in str(reason) or 'ConnectionRefused' in str(reason) or 'proof' in str(reason) or 'armed' in str(reason) or 'unavailable' in str(reason):
             return {'ok': False, 'error': '/new pas encore chargé : fais /restart une fois, puis réessaie.'}
         return {'ok': False, 'error': '/new refusé (' + str(reason)[:80] + '). Utilise /new dans Telegram.'}
-    return old_api('/api/channel/command', {'id': sid, 'profile': 'gpt5', 'command': text.strip()[:300]})
+    return old_api('/api/channel/command', {'id': sid, 'profile': config.PROFILE_NAME, 'command': text.strip()[:300]})
 
 
 def channels():
-    return [c for c in old_api('/api/channels')['channels'] if c.get('profile') == 'gpt5' and c.get('session')]
+    return [c for c in old_api('/api/channels')['channels'] if c.get('profile') == config.PROFILE_NAME and c.get('session')]
 
 
 def valid_session(sid):
@@ -371,7 +371,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Message invalide ou commande non prise en charge')
                 if not isinstance(submission,str) or not re.fullmatch(r'imac-mc-[a-zA-Z0-9_-]{8,80}', submission):
                     raise ValueError('Clé stable requise')
-                r = old_api('/api/channel/send', {'id':sid, 'profile':'gpt5', 'text':text, 'submission_id':submission})
+                r = old_api('/api/channel/send', {'id':sid, 'profile':config.PROFILE_NAME, 'text':text, 'submission_id':submission})
                 if not r.get('ok'):
                     return self.send(502, r)
                 return self.send(200, r)

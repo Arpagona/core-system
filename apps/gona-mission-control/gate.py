@@ -8,6 +8,8 @@ import fcntl
 import importlib.util
 import json
 import os
+import config, importlib
+config = importlib.reload(config)
 import re
 import sqlite3
 import subprocess
@@ -15,12 +17,12 @@ import time
 from contextlib import closing
 from pathlib import Path
 
-PROFILE = Path(os.environ.get('GONA_PROFILE', '/home/thibaud/.hermes/profiles/gpt5'))
+PROFILE = Path(os.environ.get('GONA_PROFILE', str(config.PROFILE)))
 LOOP = PROFILE / 'refonte/loop'
 GATE = LOOP / 'gate.json'
 DECISIONS = LOOP / 'decisions.jsonl'
-KANBAN_DB = Path(os.environ.get('HERMES_KANBAN_DB', '/home/thibaud/.hermes/kanban.db'))
-CLI = ['/home/thibaud/.local/bin/hermes', '-p', 'gpt5', 'kanban', '--board', 'default']
+KANBAN_DB = config.KANBAN_DB
+CLI = [config.HERMES_CLI, '-p', config.PROFILE_NAME, 'kanban', '--board', 'default']
 
 
 def _ask():
