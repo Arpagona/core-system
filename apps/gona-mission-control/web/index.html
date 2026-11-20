@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARPAGONA · Mission Control</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="alpha.css"></head>
+<body>
+<header class="bar">
+ <a class="brand" href="/"><img src="logo.png" alt="" width="52" height="52"><h1>ARPAGONA <small>Mission Control</small></h1></a>
+ <div id="who" hidden><span id="who-name"></span> <button id="logout" class="btn ghost">Quitter</button></div>
+</header>
+<main id="login-view" class="login" hidden>
+ <form id="login-form" class="panel" autocomplete="on">
+  <p class="eyebrow">Votre espace de pilotage</p><h2>Il prépare.<br><span>Vous décidez.</span></h2>
+  <label for="login">Identifiant</label><input id="login" name="username" autocomplete="username" required maxlength="64" value="thibaud">
+  <label for="password">Mot de passe</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+  <p id="login-error" class="error" role="alert"></p><button class="btn primary" type="submit">Entrer dans Mission Control →</button>
+ </form>
+</main>
+<main id="app-view" class="layout" hidden>
+ <nav id="nav" aria-label="Sections">
+  <button class="tab on" data-view="chat">Conversation</button><button class="tab mobile-tab" data-view="kanban">Kanban</button>
+  <button class="tab" data-view="drafts">Décisions</button><button hidden class="tab" data-view="engagements">Engagements</button>
+ </nav>
+ <div class="workspace">
+ <section id="view-chat" class="chat panel">
+  <div class="section-head"><div><p class="eyebrow">Votre copilote</p><h2>Un fil, toutes vos décisions.</h2></div><span class="live">● En ligne</span></div>
+  <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
+  <p id="chat-status" class="status" role="status"></p>
+  <form id="chat-form" class="composer"><label for="text" class="sr">Votre message</label>
+   <textarea id="text" rows="3" maxlength="4000" placeholder="Une question, une mission, une idée… (/ pour les commandes)" required></textarea>
+   <div id="command-menu" class="command-menu" role="listbox" aria-label="Commandes" hidden></div>
+   <div class="composer-bottom"><small>Entrée pour envoyer · / pour les commandes · maintiens 🎙 (ou Espace) pour parler · 🔊/🔇 réponse vocale ou texte</small><span class="composer-actions"><button id="stop" class="btn danger" type="button" hidden title="Interrompre le tour en cours">■ Stop</button><button id="voicecancel" class="btn" type="button" hidden title="Annuler">✕</button><button id="speakerbtn" class="btn speaker on" type="button" aria-pressed="true" title="Réponse à voix haute">🔊</button><button id="voicebtn" class="btn mic" type="button" title="Maintenir pour parler (ou Espace)" aria-label="Maintenir pour parler">🎙</button><button id="send" class="btn primary" type="submit">Envoyer ↗</button></span></div>
+  </form>
+ </section>
+ <section id="view-drafts" class="page panel" hidden><p class="eyebrow">Validation humaine</p><h2>Décisions</h2><p class="hint">Questions GONA · même source que ask.py · aucun envoi automatique.</p><div id="drafts-list" class="cards"></div></section>
+ <section id="view-engagements" class="page panel" hidden><p class="eyebrow">Ne rien laisser passer</p><h2>Engagements</h2><p class="hint">Les décisions datées. À l'échéance, l'agent prépare un brouillon, jamais un envoi.</p><div id="engagements-list" class="cards"></div></section>
+ <section id="view-kanban" class="kanban panel">
+  <div class="section-head"><div><p class="eyebrow">Du cap à l'action</p><h2>Kanban</h2></div><button id="new-card" class="btn">+ Nouvelle carte</button></div>
+  <label for="tenant-filter">Tenant</label><select id="tenant-filter"><option value="">Tous</option></select> <label><input id="history-filter" type="checkbox"> Historique hors projets</label><section id="gate" class="gate"></section><div id="mission-groups"></div><p id="kanban-status" role="status" class="status"></p><div id="board" class="board"></div>
+ </section>
+ </div>
+</main>
+<footer>ARPAGONA · Données maîtrisées · Validation humaine <details><summary>À propos</summary>Hermes Agent — © Nous Research, licence MIT.</details></footer>
+<dialog id="card-dialog" aria-labelledby="card-title"><button id="close-card" class="close btn ghost" aria-label="Fermer">×</button><h2 id="card-title">Nouvelle carte</h2>
+ <form id="create-card"><label for="card-name">Titre</label><input id="card-name" required maxlength="200"><label for="card-body">Description</label><textarea id="card-body" rows="4" maxlength="8000"></textarea><p class="hint">Sans affectation : aucun agent n'est déclenché.</p><button class="btn primary">Créer la carte</button></form>
+ <div id="card-detail" hidden><p id="detail-meta" class="hint"></p><p id="detail-body"></p><h3>Commentaires</h3><div id="comments"></div><form id="comment-form" hidden><label for="comment-text">Votre commentaire</label><textarea id="comment-text" required maxlength="8000" rows="3"></textarea><button class="btn">Commenter</button></form><div id="card-actions" class="actions"></div></div><p id="card-error" role="alert" class="error"></p>
+</dialog>
+<script src="markdown.js"></script><script src="app.js"></script><script src="voice.js"></script></body></html>
