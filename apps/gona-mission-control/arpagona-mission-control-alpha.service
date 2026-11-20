@@ -1,0 +1,16 @@
+[Unit]
+Description=ARPAGONA Mission Control alpha — Hermes personnel gpt5
+After=network.target gona-mission-control-ui.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/thibaud/projects/gona-mission-control
+ExecStart=/usr/bin/python3 /home/thibaud/projects/gona-mission-control/server.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+[Install]
+WantedBy=default.target

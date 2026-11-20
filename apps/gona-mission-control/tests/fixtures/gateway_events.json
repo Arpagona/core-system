@@ -1,0 +1,98 @@
+{
+  "note": "Formes reelles capturees en lecture seule via session.events.since (2026-11-20). Les textes, args et resultats ont ete remplaces; aucune donnee de conversation ni secret.",
+  "session_id": "20261120_071804_09c429dc",
+  "events": [
+    {
+      "seq": 1,
+      "type": "session.info",
+      "session_id": "20261120_071804_09c429dc",
+      "replay_epoch": "fixture",
+      "payload": {
+        "source": "telegram",
+        "model": "claude-opus-5-5",
+        "reasoning_effort": "medium",
+        "profile_name": "gpt5",
+        "yolo": false,
+        "tool_count": 0,
+        "archived": false
+      }
+    },
+    {
+      "seq": 2,
+      "type": "message.start",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {}
+    },
+    {
+      "seq": 3,
+      "type": "agent.step",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {"iteration": 1}
+    },
+    {
+      "seq": 4,
+      "type": "tool.start",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {
+        "tool_id": "toolu_fixture",
+        "tool_call_id": "toolu_fixture",
+        "name": "terminal",
+        "tool_name": "terminal",
+        "context": "OPENCODE_GO_API_KEY=fixture-secret curl https://example.test",
+        "args": {"command": "OPENCODE_GO_API_KEY=fixture-secret curl https://example.test"}
+      }
+    },
+    {
+      "seq": 5,
+      "type": "tool.complete",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {
+        "tool_id": "toolu_fixture",
+        "tool_call_id": "toolu_fixture",
+        "name": "terminal",
+        "tool_name": "terminal",
+        "context": "OPENCODE_GO_API_KEY=fixture-secret curl https://example.test",
+        "args": {"command": "OPENCODE_GO_API_KEY=fixture-secret curl https://example.test"},
+        "result": {"stdout": "fixture-secret"},
+        "is_error": false
+      }
+    },
+    {
+      "seq": 6,
+      "type": "message.delta",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {"offset": 0, "segment": 1, "turn_id": "fixture-turn", "text": "Bonjour"}
+    },
+    {
+      "seq": 7,
+      "type": "message.complete",
+      "session_id": "20261120_071804_09c429dc",
+      "admission_id": "fixture-admission",
+      "execution_generation": 43,
+      "replay_epoch": "fixture",
+      "payload": {
+        "admission_id": "fixture-admission",
+        "text": "Bonjour",
+        "content": "Bonjour",
+        "status": "complete",
+        "outcome": "completed",
+        "persisted_turn": {"complete": false, "final_assistant_row_id": 1}
+      }
+    }
+  ]
+}

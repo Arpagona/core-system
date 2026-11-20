@@ -1,0 +1,85 @@
+.decision-banner {border:1px solid #e9bc65;border-radius:12px;padding:10px;margin:12px 0;background:#e9bc6512;max-height:180px;overflow:auto}
+.decision-banner h3 {margin:0 0 8px;color:#ffe1a4}
+.decision-banner .task {display:inline-block;width:calc(50% - 8px);margin:4px;vertical-align:top}
+.needs-input {border-color:#e9bc65!important}
+.mission-filters {display:flex;gap:6px;overflow:auto;padding:8px 0}
+.mission-filters .btn {font-size:11px;padding:7px 10px}
+.decision-text {white-space:pre-wrap;overflow-wrap:anywhere}
+#tenant-filter {background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:6px;margin:8px}
+#history-filter {width:auto}
+.kanban {overflow:auto}
+@media(max-width:700px) {.decision-banner .task {width:100%;margin:4px 0}}
+
+/* Voix (alpha) */
+.btn.mic{min-width:3rem;font-size:1.15rem;touch-action:none;user-select:none}
+.btn.mic.rec{background:#c62828;color:#fff;border-color:#c62828;animation:micpulse 1s infinite}
+@keyframes micpulse{50%{box-shadow:0 0 0 .5rem rgba(198,40,40,.25)}}
+.composer-actions{flex:0 0 auto;display:inline-flex;align-items:center;gap:.4rem;margin-left:auto}
+.composer-actions .btn.mic{height:auto;align-self:stretch}
+
+/* Mise en page alpha (20/11) : chat réduit, Kanban élargi */
+@media (min-width:1100px){ .workspace{grid-template-columns:minmax(0,.72fr) minmax(0,1.6fr)!important} }
+@media (min-width:1100px){.board{grid-template-columns:repeat(4,minmax(0,1fr))!important}}
+details.column{opacity:.6}
+details.column summary{cursor:pointer;font-weight:600;list-style:none;display:flex;justify-content:space-between}
+details.column[open]{opacity:.85}
+/* Portail de décision */
+.gate{flex:0 0 auto;max-height:38vh;overflow:auto;border:2px solid #e9bc65;border-radius:14px;padding:12px 14px;margin:10px 0 14px;background:#e9bc6514}
+.gate h3{margin:0 0 10px;color:#ffe1a4;font-size:1.25rem}
+.gate-card{border:1px solid #ffffff22;border-radius:12px;padding:10px 12px;margin:8px 0;background:#0b1430}
+.gate-card small{opacity:.7}
+.gate-q{font-size:1.15rem;font-weight:600;margin:4px 0 8px}
+.gate-actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.gate-actions .btn{font-size:1.05rem;padding:.65rem 1.2rem}
+.btn.gate-yes{background:#1f9d55;border-color:#1f9d55;color:#fff;min-width:9rem;font-weight:700}
+.btn.gate-no{background:#c62828;border-color:#c62828;color:#fff;min-width:9rem;font-weight:700}
+.btn.gate-yes:hover{background:#25b863}.btn.gate-no:hover{background:#e03a3a}
+.btn.gate-more{font-size:.95rem!important}
+.gate-effects{font-size:.8rem;margin:6px 0 0}
+.gate-done-yes{border-color:#1f9d55;opacity:.6}.gate-done-no{border-color:#c62828;opacity:.6}
+@media (min-width:1600px){ .gate{display:grid;grid-template-columns:1fr 1fr;gap:0 12px} .gate h3{grid-column:1/-1} }
+
+.msg.cmd{border:1px dashed #ffffff40;border-radius:10px;padding:8px 10px;margin:8px 0;background:#ffffff08}
+.msg.cmd small{opacity:.6}.msg.cmd pre{white-space:pre-wrap;margin:4px 0 0;font-size:.9rem}
+
+/* Streaming, outils, contrôles et markdown (parité Telegram) */
+.composer{position:relative}
+.command-menu{position:absolute;z-index:20;left:12px;right:12px;bottom:calc(100% - 6px);max-height:260px;overflow:auto;background:#0b1430;border:1px solid #ffffff30;border-radius:12px;box-shadow:0 12px 30px #0008;padding:6px}
+.command-item{display:flex;flex-direction:column;align-items:flex-start;gap:2px;width:100%;text-align:left;background:transparent;border:0;color:var(--ink);padding:8px 10px;border-radius:8px;cursor:pointer}
+.command-item small{color:var(--dim);font-size:11px}
+.command-item.on,.command-item:hover{background:#4cd7f620}
+.msg.streaming .caret{display:inline-block;width:.55em;height:1em;margin-left:2px;background:#4cd7f6;vertical-align:-2px;animation:blink 1s steps(2,start) infinite}
+@keyframes blink{50%{opacity:0}}
+.msg.assistant p{margin:0 0 .65em;white-space:pre-wrap}
+.msg.assistant p:last-child{margin-bottom:0}
+.msg.assistant h1,.msg.assistant h2,.msg.assistant h3{margin:.4em 0 .35em;line-height:1.25}
+.msg.assistant h1{font-size:1.35em}.msg.assistant h2{font-size:1.2em}.msg.assistant h3{font-size:1.08em}
+.msg.assistant ul,.msg.assistant ol{margin:.3em 0 .7em;padding-left:1.35em;white-space:normal}
+.msg.assistant li{margin:.15em 0}
+.msg.assistant blockquote{margin:.4em 0;padding:.2em .8em;border-left:3px solid #4cd7f6;color:#c7d2e4}
+.msg.assistant code{background:#ffffff12;border-radius:5px;padding:.1em .35em;font-size:.92em}
+.msg.assistant pre{background:#050b1a;border:1px solid #ffffff20;border-radius:9px;padding:10px;overflow:auto;white-space:pre}
+.msg.assistant pre code{background:transparent;padding:0}
+.msg.assistant a{color:#7fe3ff}
+.msg.assistant hr{border:0;border-top:1px solid #ffffff25;margin:.7em 0}
+.msg-media{display:block;max-width:100%;max-height:420px;border-radius:10px;margin:.5em 0;border:1px solid #ffffff20}
+.tool-line{font-size:12px;color:#a9bad4;border-left:2px solid #4cd7f666;padding:3px 9px;max-width:92%;white-space:normal;overflow-wrap:anywhere;opacity:.9}
+.tool-line:before{content:"› ";color:#4cd7f6}
+.tool-line.done{opacity:.62}
+.tool-line.failed{color:var(--bad);border-color:var(--bad)}
+.control-card{align-self:stretch;border:1px solid #e9bc65;border-radius:14px;padding:12px 14px;background:#e9bc6512}
+.control-card small{opacity:.75;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+.control-question{font-weight:600;margin:6px 0}
+.control-command{white-space:pre-wrap;background:#050b1a;border:1px solid #ffffff20;border-radius:8px;padding:8px;font-size:12px;max-height:180px;overflow:auto}
+.control-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.control-answer{width:auto;flex:1 1 220px;padding:8px}
+.control-card.resolved{border-color:#1f9d55;opacity:.72}
+.btn.danger{background:#c62828;border-color:#c62828;color:#fff}
+.picker-list{display:flex;flex-wrap:wrap;gap:6px;max-height:260px;overflow:auto;margin-top:6px}
+.picker-list .btn{font-size:12px;padding:6px 9px}
+
+.msg.cmd .hint.ok{color:#3ecf8e;font-weight:600}
+.msg.cmd .error{color:#ff6b6b;font-weight:600}
+
+.composer-actions .btn.speaker{opacity:.55;align-self:stretch;height:auto}
+.composer-actions .btn.speaker.on{opacity:1;border-color:#3ecf8e;box-shadow:0 0 0 1px #3ecf8e inset}
