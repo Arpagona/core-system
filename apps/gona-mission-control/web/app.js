@@ -73,7 +73,7 @@ async function pollReply() {
   let r;
   try { r=await api("/api/channel/reply?id="+encodeURIComponent(p.id)+"&submission="+encodeURIComponent(p.submission_id)); }
   catch(e) {
-    if(/Session Telegram active/.test(e.message)) {
+    if(/Session (Telegram )?active/.test(e.message)) {
       sessionStorage.removeItem(PENDING);
       if(!$("text").value) $("text").value=p.text||"";
       setBusy(false,"La conversation a changé : message non envoyé, renvoie-le.");
@@ -105,7 +105,7 @@ async function pollReply() {
   if(["ready","ambiguous"].includes(r.state)) {
     sessionStorage.removeItem(PENDING);
     setBusy(false,r.state==="ambiguous"?"Une autre intervention est intervenue ; consulte le fil.":"");
-  } else setBusy(true,"L’agent prépare… · même fil que Telegram");
+  } else setBusy(true,"L’agent prépare…"+(window.MC_BACKEND==="api"?"":" · même fil que Telegram"));
 }
 function setBusy(on, label) {
   busy = on;
@@ -359,7 +359,7 @@ async function start() {
   const res = await fetch("/api/me");
   if (res.status !== 200) { show("login"); return; }
   const me = await res.json();
-  $("who-name").textContent = me.name;
+  $("who-name").textContent = me.name; window.MC_BACKEND = me.backend || "telegram";
   show("app");
   const channels = await api("/api/channels");
   session=(channels.channels.find(c=>!c.thread) || channels.channels[0] || {}).session;
@@ -402,7 +402,7 @@ $("chat-form").addEventListener("submit",async ev=>{
   window.__mcTypedReply = Date.now();
   const echo = addMessage("user", text);
   try { try { await api("/api/chat",p); } catch(e) {
-          if(!/Session Telegram active/.test(e.message) || !(await syncSession())) throw e;
+          if(!/Session (Telegram )?active/.test(e.message) || !(await syncSession())) throw e;
           p.id=session; sessionStorage.setItem(PENDING,JSON.stringify(p)); await api("/api/chat",p); }
         $("text").value=""; if(!stream || !stream.es) startStream(); await pollReply(); }
   catch(e) { echo.remove(); setBusy(true,e.message+" · Envoi non confirmé : ne pas renvoyer automatiquement. Consulte le fil."); }

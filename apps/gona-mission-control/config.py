@@ -14,3 +14,9 @@ HERMES_CLI = os.environ.get('GONA_MC_HERMES_CLI', str(HOME / '.local/bin/hermes'
 LEGACY_URL = os.environ.get('GONA_MC_LEGACY_URL', 'http://127.0.0.1:8790').rstrip('/')
 LEGACY_TOKEN_FILE = Path(os.environ.get('GONA_MC_LEGACY_TOKEN_FILE', str(PROFILE / 'mission-control/token')))
 MEDIA_EXTRA = tuple(Path(p) for p in os.environ.get('GONA_MC_MEDIA_ROOTS', '').split(':') if p)
+
+# Backend du chat : 'telegram' (défaut, relais vers le gateway Telegram) ou 'api' (API locale Hermes, sans Telegram)
+BACKEND = os.environ.get('GONA_MC_BACKEND', 'telegram').strip().lower()
+HERMES_URL = os.environ.get('GONA_MC_HERMES_URL', 'http://127.0.0.1:8642')
+HERMES_KEY_FILE = os.environ.get('GONA_MC_HERMES_KEY_FILE', '')
+DATA_DIR = Path(os.environ.get('GONA_MC_DATA_DIR', str(PROFILE / 'gona-mission-control')))

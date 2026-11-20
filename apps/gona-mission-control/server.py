@@ -13,6 +13,7 @@ import subprocess
 import time
 import urllib.request
 import urllib.error
+import queue
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -20,6 +21,7 @@ from urllib.parse import parse_qs, urlsplit, urlencode
 import bridge
 import gate
 import config
+import backend_api
 
 ROOT = Path(__file__).resolve().parent
 PROFILE = config.PROFILE
@@ -33,6 +35,10 @@ MAPPING = PROFILE / 'refonte/loop/kanban_map.json'
 HERMES = config.HERMES_SRC
 HERMES_PY = HERMES / 'venv/bin/python'
 LIVE = ROOT / 'gateway_live.py'
+API = None
+if config.BACKEND == 'api':
+    API = backend_api.ApiBackend(config.DATA_DIR / 'chat.db',
+                                 backend_api.HermesClient(config.HERMES_URL, config.HERMES_KEY_FILE), config.PROFILE_NAME)
 COMMANDS = [
     {'command': '/status', 'description': 'Modèle, réflexion et état du fil', 'arg': False},
     {'command': '/model', 'description': 'Choisir le fournisseur puis le modèle', 'arg': False},
@@ -135,6 +141,8 @@ def command(sid, text):
     """Commandes « / » du chat. Jamais transmises à l'agent comme message.
     /restart : SIGUSR1 au gateway = redémarrage natif « quand inactif » (comme /restart Telegram).
     /model, /status, /reasoning, /help : même réglage par conversation que Telegram (gateway natif)."""
+    if API:
+        return API.command(sid, text)
     parts = text.strip().split()
     name = parts[0].lstrip('/').lower()
     if name == 'stop':
@@ -178,12 +186,14 @@ def command(sid, text):
 
 
 def channels():
+    if API:
+        return API.channels()
     return [c for c in old_api('/api/channels')['channels'] if c.get('profile') == config.PROFILE_NAME and c.get('session')]
 
 
 def valid_session(sid):
     if not isinstance(sid, str) or not any(c['session'] == sid for c in channels()):
-        raise ValueError('Session Telegram active requise ; actualiser le fil')
+        raise ValueError('Session active requise ; actualiser le fil')
     return sid
 
 
@@ -214,7 +224,34 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def stream_api(self, sid):
+        q, live = API.subscribe(sid)
+        self.close_connection = True
+        self.send_response(200)
+        for k, v in (('Content-Type', 'text/event-stream; charset=utf-8'), ('Cache-Control', 'no-cache, no-store'),
+                     ('Connection', 'close'), ('X-Accel-Buffering', 'no'), ('X-Content-Type-Options', 'nosniff'),
+                     ('Referrer-Policy', 'no-referrer'), ('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'")):
+            self.send_header(k, v)
+        self.end_headers()
+        def emit(obj):
+            self.wfile.write(('data: ' + json.dumps(obj, ensure_ascii=False) + '\n\n').encode()); self.wfile.flush()
+        try:
+            emit({'type': 'snapshot', 'session': sid, 'running': bool(live.get('running')), 'prompts': [], 'info': {}})
+            if live.get('running') and live.get('text'):
+                emit({'type': 'delta', 'text': live['text']})
+            while True:
+                try:
+                    emit(q.get(timeout=10))
+                except queue.Empty:
+                    self.wfile.write(b': keep-alive\n\n'); self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            API.unsubscribe(sid, q)
+
     def stream(self, sid):
+        if API:
+            return self.stream_api(sid)
         if not HERMES_PY.is_file() or not LIVE.is_file():
             return self.send(502, {'error':'Flux indisponible'})
         env = dict(os.environ, HERMES_HOME=str(PROFILE), PYTHONPATH=str(HERMES))
@@ -297,7 +334,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(401, {'error':'Authentification requise'})
         try:
             if u.path == '/api/me':
-                return self.send(200, {'name':'Thibaud · GONA / gpt5'})
+                return self.send(200, {'name':'Thibaud · GONA / gpt5', 'backend': 'api' if API else 'telegram'})
             if u.path == '/api/channels':
                 return self.send(200, {'channels':channels()})
             if u.path == '/api/commands':
@@ -313,6 +350,9 @@ class Handler(BaseHTTPRequestHandler):
                 valid_session(q.get('id',[''])[0])
                 if u.path.endswith('/reply') and not re.fullmatch(r'[a-zA-Z0-9_-]{8,100}', q.get('submission',[''])[0]):
                     raise ValueError('Identifiant d’envoi invalide')
+                if API:
+                    sid = q['id'][0]
+                    return self.send(200, API.messages(sid) if u.path.endswith('/messages') else API.reply(sid, q['submission'][0]))
                 return self.send(200, old_api(self.path))
             if u.path in ('/api/kanban/list', '/kanban'):
                 return self.send(200, read_kanban())
@@ -324,7 +364,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'text':ask('list')})
             return self.send(404, {'error':'Route inconnue'})
         except (ValueError, TypeError) as e:
-            self.send(400, {'error': 'Session Telegram active requise ; actualiser le fil' if 'Session Telegram active' in str(e) else 'Requête invalide'})
+            self.send(400, {'error': 'Session active requise ; actualiser le fil' if 'Session active requise' in str(e) else 'Requête invalide'})
         except Exception:
             self.send(502, {'error':'Source indisponible ; aucune confirmation d’effet'})
 
@@ -371,7 +411,7 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Message invalide ou commande non prise en charge')
                 if not isinstance(submission,str) or not re.fullmatch(r'imac-mc-[a-zA-Z0-9_-]{8,80}', submission):
                     raise ValueError('Clé stable requise')
-                r = old_api('/api/channel/send', {'id':sid, 'profile':config.PROFILE_NAME, 'text':text, 'submission_id':submission})
+                r = API.send(sid, text, submission) if API else old_api('/api/channel/send', {'id':sid, 'profile':config.PROFILE_NAME, 'text':text, 'submission_id':submission})
                 if not r.get('ok'):
                     return self.send(502, r)
                 return self.send(200, r)
@@ -383,6 +423,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, command(sid, text))
             if self.path == '/api/control/respond':
                 sid = valid_session(b.get('id'))
+                if API:
+                    raise RuntimeError('non pris en charge')
                 kind = b.get('kind')
                 pid = b.get('prompt_id')
                 if kind not in ('approval', 'clarify'):
@@ -414,7 +456,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, json.loads(ask('decide', b['target'], b['action'])))
             return self.send(404, {'error':'Opération interdite'})
         except (ValueError, TypeError) as e:
-            self.send(400, {'error': 'Session Telegram active requise ; actualiser le fil' if 'Session Telegram active' in str(e) else 'Requête invalide'})
+            self.send(400, {'error': 'Session active requise ; actualiser le fil' if 'Session active requise' in str(e) else 'Requête invalide'})
         except Exception:
             self.send(502, {'error':'Source indisponible ; ne pas renvoyer automatiquement'})
 
