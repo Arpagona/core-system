@@ -20,6 +20,8 @@ Environment=GONA_MC_TOKEN_FILE=/etc/gona-mission-control/token
 Environment=GONA_MC_LEGACY_TOKEN_FILE=/etc/gona-mission-control/token
 Environment=GONA_MC_PROFILE=/var/lib/gona-mission-control/profile
 Environment=GONA_MC_DATA_DIR=/var/lib/gona-mission-control/data
+Environment=HERMES_KANBAN_DB=/var/lib/gona-mission-control/kanban.db
+Environment=GONA_MC_HERMES_CLI=/bin/false
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
