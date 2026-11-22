@@ -2,6 +2,11 @@
 const $ = (id) => document.getElementById(id);
 const HEADERS = { "Content-Type": "application/json", "X-Arpagona": "1" };
 let busy = false;
+const LIBELLES = { planifie: "Planifié", en_preparation: "Brouillon en préparation", pret: "Prêt",
+  en_attente: "À valider", approuve: "Approuvé · non envoyé", refuse: "Refusé", envoye: "Envoyé",
+  echec: "Échec", annule: "Annulé" };
+const CERTITUDES = { certain: "certaine", probable: "probable", a_confirmer: "à confirmer" };
+const libelle = (code) => LIBELLES[code] || code;
 
 function show(view) {
   $("login-view").hidden = view !== "login";
@@ -46,6 +51,7 @@ async function start() {
   show("app");
   await loadConversation();
   loadKanban();
+  refreshBadge();
   $("text").focus();
 }
 
@@ -139,7 +145,7 @@ async function loadEngagements() {
     h.textContent = e.client + " — " + e.sujet;
     const meta = document.createElement("p");
     meta.className = "meta";
-    meta.textContent = nf.format(new Date(e.echeance * 1000)) + " · " + e.statut + " · certitude : " + e.certitude;
+    meta.textContent = nf.format(new Date(e.echeance * 1000)) + " · " + libelle(e.statut) + " · certitude " + (CERTITUDES[e.certitude] || e.certitude);
     const p = document.createElement("p");
     p.textContent = e.decision;
     card.append(h, meta, p);
@@ -153,7 +159,9 @@ async function loadDrafts() {
   const data = await res.json();
   const box = $("drafts-list");
   box.replaceChildren();
-  if (!data.drafts.length) { box.textContent = "Aucun brouillon en attente."; return; }
+  updateBadge(data.drafts);
+  if (!data.drafts.length) { box.textContent = "Aucun brouillon pour l’instant. À l’échéance d’un engagement, l’agent en prépare un ici."; return; }
+  const df = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   for (const d of data.drafts) {
     const card = document.createElement("article");
     card.className = "card";
@@ -163,9 +171,9 @@ async function loadDrafts() {
     meta.className = "meta";
     const tag = document.createElement("span");
     tag.className = "tag" + (d.statut === "en_attente" ? " wait" : (d.statut === "refuse" ? " bad" : ""));
-    tag.textContent = d.statut;
-    meta.append(tag);
-    if (d.livraison) meta.append(" " + d.livraison);
+    tag.textContent = libelle(d.statut);
+    meta.append(tag, " préparé le " + df.format(new Date(d.cree * 1000)));
+    if (d.livraison) meta.append(" · " + d.livraison);
     const body = document.createElement("pre");
     body.textContent = d.corps;
     card.append(h, meta, body);
@@ -190,10 +198,39 @@ async function loadDrafts() {
       no.addEventListener("click", () => decide(false));
       actions.append(ok, no);
       card.append(actions);
+    } else if (d.statut === "approuve") {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const copy = document.createElement("button");
+      copy.className = "btn ghost"; copy.textContent = "Copier le texte";
+      copy.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(d.corps); copy.textContent = "Copié ✓"; }
+        catch (err) { const r = document.createRange(); r.selectNodeContents(body);
+          const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); copy.textContent = "Texte sélectionné : Ctrl+C"; }
+      });
+      actions.append(copy);
+      card.append(actions);
     }
     box.append(card);
   }
 }
+
+function updateBadge(drafts) {
+  const n = drafts.filter(d => d.statut === "en_attente").length;
+  const tab = document.querySelector('.tab[data-view="drafts"]');
+  tab.textContent = "Approbations";
+  if (n) { const b = document.createElement("span"); b.className = "badge"; b.textContent = String(n);
+    b.setAttribute("aria-label", n + " à valider"); tab.append(b); }
+}
+async function refreshBadge() {
+  if ($("app-view").hidden) return;
+  const res = await fetch("/api/drafts").catch(() => null);
+  if (!res || res.status !== 200) return;
+  const data = await res.json();
+  updateBadge(data.drafts);
+  if (!$("view-drafts").hidden) loadDrafts();
+}
+setInterval(refreshBadge, 10000);
 
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {

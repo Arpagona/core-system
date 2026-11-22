@@ -136,6 +136,18 @@ nav {
   background:#ffffff0b;
   color:white
 }
+.badge {
+  display:inline-block;
+  min-width:20px;
+  margin-left:8px;
+  padding:1px 7px;
+  border-radius:999px;
+  background:#ff7a59;
+  color:#10142a;
+  font-size:.78em;
+  font-weight:700;
+  text-align:center
+}
 .mobile-tab {
   display:none
 }

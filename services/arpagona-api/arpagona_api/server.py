@@ -496,8 +496,8 @@ def main() -> None:
     if kanban_file:
         kanban_token = Path(kanban_file).read_text(encoding="ascii").strip()
         if kanban_token:
-            app.kanban = KanbanClient(kanban_token)
-    start_trigger(app)
+            app.kanban = KanbanClient(kanban_token, os.environ.get("ARPAGONA_KANBAN_URL", "http://127.0.0.1:8701"))
+    start_trigger(app, float(os.environ.get("ARPAGONA_TRIGGER_INTERVAL", "30")))
     server = ThreadingHTTPServer((host, port), make_handler(app))
     server.daemon_threads = True
     try:

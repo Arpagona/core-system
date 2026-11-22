@@ -4,6 +4,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -43,6 +44,8 @@ def arguments(op, data):
 
 def execute(op, data, runner=subprocess.run):
     args = arguments(op, data)
+    if args[0].endswith('.py'):  # Kanban simulé du poste de développement, portable
+        args = [sys.executable] + args
     result = runner(args, capture_output=True, text=True, timeout=25, check=False)
     if result.returncode:
         raise RuntimeError('commande refusée ou carte inconnue')
@@ -85,4 +88,5 @@ def handler(token, runner=subprocess.run):
 
 if __name__ == '__main__':
     token = Path(os.environ['KANBAN_TOKEN_FILE']).read_text().strip()
-    ThreadingHTTPServer(('127.0.0.1', 8701), handler(token)).serve_forever()
+    port = int(os.environ.get('KANBAN_BRIDGE_PORT', '8701'))
+    ThreadingHTTPServer(('127.0.0.1', port), handler(token)).serve_forever()
