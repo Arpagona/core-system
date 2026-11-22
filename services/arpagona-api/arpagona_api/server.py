@@ -9,7 +9,9 @@ import time
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
@@ -22,6 +24,8 @@ MAX_TEXT = 8000
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
                 ".webmanifest": "application/manifest+json"}
+# Fuseau d'affichage des heures : le serveur tourne en UTC, les utilisateurs lisent l'heure de Paris.
+DISPLAY_TZ = ZoneInfo(os.environ.get("ARPAGONA_TZ", "Europe/Paris"))
 COMMANDS_HELP = ("Commandes : /new ouvre une nouvelle conversation (l'agent repart d'un fil vide) ; "
                  "/status affiche l'état du compte, du moteur et des engagements ; /help affiche cette aide.")
 LOGIN_MAX_FAILS = 5
@@ -354,7 +358,7 @@ def make_handler(app: App):
             self.wfile.write(payload)
 
         def _status_text(self, user, conv) -> str:
-            started = time.strftime("%d/%m/%Y %H:%M", time.localtime(conv["created_at"]))
+            started = datetime.fromtimestamp(conv["created_at"], DISPLAY_TZ).strftime("%d/%m/%Y %H:%M")
             messages = app.store.messages(conv["id"])
             engagements = app.store.engagements(user["id"])
             active = [e for e in engagements if e["status"] in ("planifie", "en_preparation", "pret", "en_attente")]

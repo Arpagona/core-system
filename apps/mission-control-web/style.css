@@ -288,10 +288,13 @@ input::placeholder,textarea::placeholder {
 .board {
   display:grid;
   grid-template-columns:repeat(3,minmax(0,1fr));
+  /* Lignes à la hauteur du contenu : une colonne chargée allonge sa ligne au lieu de déborder sur la suivante. */
+  grid-auto-rows:max-content;
   gap:12px;
   overflow:auto;
   align-content:start;
-  flex:1
+  flex:1;
+  min-height:0
 }
 .column {
   background:#0f172a60;
@@ -524,11 +527,23 @@ dialog::backdrop {
   .composer small {
     max-width:150px
   }
+  /* Téléphone : une colonne par ligne, hauteur selon le contenu (les cartes ne débordent plus). */
+  .kanban {
+    height:auto;
+    min-height:0
+  }
   .board {
-    grid-template-columns:repeat(2,minmax(0,1fr))
+    grid-template-columns:minmax(0,1fr);
+    grid-auto-rows:auto;
+    flex:none;
+    overflow:visible
   }
   .column {
-    padding:8px
+    padding:8px;
+    min-height:0
+  }
+  .column:not(:has(.task)) {
+    padding-bottom:0
   }
   .column h3 {
     font-size:9px
