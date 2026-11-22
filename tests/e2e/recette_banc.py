@@ -88,19 +88,23 @@ def raw_status(base: str, method: str, path: str, headers: dict | None = None, b
     return status
 
 
-def hindsight_recall(ns, query: str) -> tuple[str, str]:
-    """Interroge directement le serveur de mémoire : preuve que le fait y est, indépendamment du modèle."""
-    import urllib.request
-    key = ""
+def hindsight_key(ns) -> str:
     try:
         with open(ns.hindsight_env, encoding="utf-8") as handle:
             for line in handle:
                 if line.startswith("HINDSIGHT_API_TENANT_API_KEY="):
-                    key = line.split("=", 1)[1].strip()
+                    return line.split("=", 1)[1].strip()
     except OSError:
-        return "", "fichier de clé de mémoire illisible"
+        pass
+    return ""
+
+
+def hindsight_recall(ns, query: str) -> tuple[str, str]:
+    """Interroge directement le serveur de mémoire : preuve que le fait y est, indépendamment du modèle."""
+    import urllib.request
+    key = hindsight_key(ns)
     if not key:
-        return "", "clé de mémoire absente"
+        return "", "clé de mémoire absente ou illisible"
     body = json.dumps({"query": query, "types": ["observation", "world"], "budget": "mid"}).encode()
     req = urllib.request.Request(f"{ns.hindsight}/v1/default/banks/{ns.bank}/memories/recall", data=body,
                                  headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
@@ -111,6 +115,40 @@ def hindsight_recall(ns, query: str) -> tuple[str, str]:
         return "", f"requête de rappel en échec : {exc}"
     texts = " ".join(str(item.get("text", "")) for item in data.get("results", []))
     return texts, f"{len(data.get('results', []))} résultat(s)"
+
+
+def recette_sessions(ns, logins: tuple[str, ...]) -> list[str]:
+    """Sessions Hermès des comptes de recette, lues avant leur suppression."""
+    marks = ",".join("?" * len(logins))
+    with sqlite3.connect(f"file:{ns.db}?mode=ro", uri=True) as conn:
+        rows = conn.execute(f"SELECT c.hermes_session_id FROM conversations c JOIN users u ON u.id = c.user_id"
+                            f" WHERE u.login IN ({marks})", logins).fetchall()
+    return [r[0] for r in rows]
+
+
+def hindsight_forget(ns, session_ids: list[str]) -> tuple[int, str]:
+    """Efface de la banque d'équipe les documents retenus pendant la recette (un document par session).
+
+    La banque est commune à l'instance (ADR 0008) : sans ce nettoyage, les faits fictifs
+    de la recette remonteraient dans les conversations des vrais utilisateurs.
+    """
+    import urllib.error
+    import urllib.request
+    key = hindsight_key(ns)
+    if not key:
+        return 0, "clé de mémoire absente ou illisible"
+    deleted, notes = 0, []
+    for sid in session_ids:
+        req = urllib.request.Request(f"{ns.hindsight}/v1/default/banks/{ns.bank}/documents/{urllib.parse.quote(sid)}",
+                                     method="DELETE", headers={"Authorization": f"Bearer {key}"})
+        try:
+            with urllib.request.urlopen(req, timeout=60):
+                deleted += 1
+        except urllib.error.HTTPError as exc:
+            notes.append(f"{sid[-6:]} : http {exc.code}" if exc.code != 404 else f"{sid[-6:]} : rien retenu")
+        except Exception as exc:  # le détail importe pour le rapport
+            notes.append(f"{sid[-6:]} : {exc}")
+    return deleted, "; ".join(notes)
 
 
 def read_secret(path: str) -> str:
@@ -318,6 +356,21 @@ def main() -> int:
             check("R4", "le moteur reprend la même conversation après redémarrage",
                   code in again.get("text", ""), again.get("text", ""), "modèle")
     finally:
+        # Mémoire d'équipe : la recette efface ce qu'elle a fait retenir, avant de supprimer ses comptes.
+        try:
+            sessions = recette_sessions(ns, (user_a, user_b))
+        except sqlite3.Error as exc:
+            sessions = []
+            check("N0", "sessions de recette retrouvées pour le nettoyage mémoire", False, str(exc))
+        if ns.memoire_equipe:
+            # La rétention est asynchrone : on laisse finir les dernières extractions avant d'effacer.
+            time.sleep(20)
+        deleted, detail = hindsight_forget(ns, sessions)
+        if ns.memoire_equipe:
+            residue, _ = hindsight_recall(ns, societe)
+            check("N1", "mémoire nettoyée : aucun fait fictif de la recette ne reste dans la banque d'équipe",
+                  not any(f in residue for f in (bois, contact, code)),
+                  f"{deleted} document(s) effacé(s) {detail}".strip())
         for login in (user_a, user_b):
             manage(ns, "del-user", login)
 
