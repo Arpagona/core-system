@@ -47,4 +47,4 @@ python3 -m unittest discover -s tests/dev -v
 
 Comptes : `python3 -m arpagona_api.manage add-user|set-password|del-user <login> --password-stdin` (en tant que `arpagona-api`).
 
-Pour le déploiement et les limites du banc, voir [deploy/atlas/README.md](deploy/atlas/README.md). Décisions : [ADR 0007](docs/decisions/0007-surcouche-hermes.md), [ADR 0008](docs/decisions/0008-instance-par-client-memoire-hindsight.md).
+Pour le déploiement et les limites du banc, voir [deploy/atlas/README.md](deploy/atlas/README.md). Accès distant des contributeurs : [deploy/atlas/ACCES-DISTANT.md](deploy/atlas/ACCES-DISTANT.md). Décisions : [ADR 0007](docs/decisions/0007-surcouche-hermes.md), [ADR 0008](docs/decisions/0008-instance-par-client-memoire-hindsight.md).
