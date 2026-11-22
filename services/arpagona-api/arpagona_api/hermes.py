@@ -43,6 +43,14 @@ class HermesClient:
         with self._request("POST", "/v1/runs", body, {"Idempotency-Key": idempotency_key}) as resp:
             return json.loads(resp.read())["run_id"]
 
+    def healthy(self) -> bool:
+        """Le moteur répond-il ? (contrôle court, pour /status)"""
+        try:
+            with self._request("GET", "/v1/health", timeout=5) as resp:
+                return 200 <= resp.status < 300
+        except Exception:
+            return False
+
     def run_status(self, run_id: str) -> dict:
         with self._request("GET", f"/v1/runs/{run_id}") as resp:
             return json.loads(resp.read())

@@ -24,9 +24,10 @@ CREATE TABLE IF NOT EXISTS web_sessions (
 );
 CREATE TABLE IF NOT EXISTS conversations (
     id INTEGER PRIMARY KEY,
-    user_id INTEGER NOT NULL UNIQUE REFERENCES users(id),
+    user_id INTEGER NOT NULL REFERENCES users(id),
     hermes_session_id TEXT NOT NULL UNIQUE,
-    created_at REAL NOT NULL
+    created_at REAL NOT NULL,
+    closed_at REAL
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY,
@@ -101,6 +102,38 @@ class Store:
             self._db.execute("PRAGMA journal_mode=WAL")
             self._db.execute("PRAGMA foreign_keys=ON")
             self._db.executescript(SCHEMA)
+            self._migrate()
+            # Une seule conversation ouverte par compte ; /new ferme la précédente.
+            self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS conversations_open"
+                             " ON conversations(user_id) WHERE closed_at IS NULL")
+
+    def _migrate(self) -> None:
+        """Bases antérieures : une conversation par compte (user_id UNIQUE), sans closed_at.
+
+        SQLite ne sait pas retirer une contrainte : la table est reconstruite à l'identique,
+        mêmes identifiants, dans une transaction. Les messages gardent leur conversation.
+        """
+        cols = [r["name"] for r in self._db.execute("PRAGMA table_info(conversations)")]
+        if "closed_at" in cols:
+            return
+        self._db.execute("PRAGMA foreign_keys=OFF")
+        try:
+            self._db.execute("BEGIN")
+            self._db.execute("CREATE TABLE conversations_v2 (id INTEGER PRIMARY KEY,"
+                             " user_id INTEGER NOT NULL REFERENCES users(id),"
+                             " hermes_session_id TEXT NOT NULL UNIQUE, created_at REAL NOT NULL, closed_at REAL)")
+            self._db.execute("INSERT INTO conversations_v2(id, user_id, hermes_session_id, created_at)"
+                             " SELECT id, user_id, hermes_session_id, created_at FROM conversations")
+            self._db.execute("DROP TABLE conversations")
+            self._db.execute("ALTER TABLE conversations_v2 RENAME TO conversations")
+            if self._db.execute("PRAGMA foreign_key_check").fetchall():
+                raise sqlite3.IntegrityError("migration des conversations : clés étrangères rompues")
+            self._db.execute("COMMIT")
+        except Exception:
+            self._db.execute("ROLLBACK")
+            raise
+        finally:
+            self._db.execute("PRAGMA foreign_keys=ON")
 
     def close(self) -> None:
         with self._lock:
@@ -202,17 +235,46 @@ class Store:
 
     # --- conversation -----------------------------------------------------
     def conversation_for(self, user_id: int) -> sqlite3.Row:
-        """Conversation unique de l'utilisateur. L'identifiant de session Hermès est tiré ici, jamais reçu du client."""
-        row = self._one("SELECT * FROM conversations WHERE user_id = ?", (user_id,))
+        """Conversation ouverte de l'utilisateur. L'identifiant de session Hermès est tiré ici, jamais reçu du client."""
+        row = self._one("SELECT * FROM conversations WHERE user_id = ? AND closed_at IS NULL", (user_id,))
         if row:
             return row
-        hermes_id = f"arpagona-u{user_id}-{secrets.token_hex(12)}"
         with self._lock:
             self._db.execute(
                 "INSERT OR IGNORE INTO conversations(user_id, hermes_session_id, created_at) VALUES (?,?,?)",
-                (user_id, hermes_id, time.time()),
+                (user_id, self._new_session_id(user_id), time.time()),
             )
-            return self._db.execute("SELECT * FROM conversations WHERE user_id = ?", (user_id,)).fetchone()
+            return self._db.execute("SELECT * FROM conversations WHERE user_id = ? AND closed_at IS NULL",
+                                    (user_id,)).fetchone()
+
+    @staticmethod
+    def _new_session_id(user_id: int) -> str:
+        return f"arpagona-u{user_id}-{secrets.token_hex(12)}"
+
+    def new_conversation(self, user_id: int) -> sqlite3.Row:
+        """/new : ferme la conversation ouverte et en ouvre une neuve, avec une nouvelle session Hermès.
+
+        L'ancienne reste en base (historique, engagements liés) mais n'est plus jamais envoyée au moteur.
+        La mémoire d'équipe (Hindsight) n'est pas touchée : elle appartient à l'instance (ADR 0008).
+        """
+        now = time.time()
+        with self._lock:
+            self._db.execute("BEGIN IMMEDIATE")
+            try:
+                self._db.execute("UPDATE conversations SET closed_at = ? WHERE user_id = ? AND closed_at IS NULL",
+                                 (now, user_id))
+                self._db.execute("INSERT INTO conversations(user_id, hermes_session_id, created_at) VALUES (?,?,?)",
+                                 (user_id, self._new_session_id(user_id), now))
+                row = self._db.execute("SELECT * FROM conversations WHERE user_id = ? AND closed_at IS NULL",
+                                       (user_id,)).fetchone()
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+            return row
+
+    def conversation_count(self, user_id: int) -> int:
+        return int(self._one("SELECT COUNT(*) AS n FROM conversations WHERE user_id = ?", (user_id,))["n"])
 
     def add_message(self, conversation_id: int, role: str, content: str, status: str = "done",
                     run_id: str | None = None) -> int:

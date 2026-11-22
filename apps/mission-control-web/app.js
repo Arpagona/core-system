@@ -116,6 +116,7 @@ $("chat-form").addEventListener("submit", async (ev) => {
           ended = true;
           body.textContent = ev.text || body.textContent;
           if (ev.status === "failed") bubble.classList.add("failed");
+          if (ev.reset) loadConversation();  // /new : afficher le fil neuf
         }
         $("log").scrollTop = $("log").scrollHeight;
       }
