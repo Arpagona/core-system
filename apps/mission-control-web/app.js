@@ -2,6 +2,11 @@
 const $ = (id) => document.getElementById(id);
 const HEADERS = { "Content-Type": "application/json", "X-Arpagona": "1" };
 let busy = false;
+const LIBELLES = { planifie: "Planifié", en_preparation: "Brouillon en préparation", pret: "Prêt",
+  en_attente: "À valider", approuve: "Approuvé · non envoyé", refuse: "Refusé", envoye: "Envoyé",
+  echec: "Échec", annule: "Annulé" };
+const CERTITUDES = { certain: "certaine", probable: "probable", a_confirmer: "à confirmer" };
+const libelle = (code) => LIBELLES[code] || code;
 
 function show(view) {
   $("login-view").hidden = view !== "login";
@@ -45,6 +50,8 @@ async function start() {
   $("who-name").textContent = me.name;
   show("app");
   await loadConversation();
+  loadKanban();
+  refreshBadge();
   $("text").focus();
 }
 
@@ -88,7 +95,7 @@ $("chat-form").addEventListener("submit", async (ev) => {
   const bubble = addMessage("assistant", "");
   const body = document.createElement("span");
   bubble.appendChild(body);
-  setBusy(true, "Votre collègue répond…");
+  setBusy(true, "L’agent prépare…");
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "", ended = false;
@@ -103,8 +110,8 @@ $("chat-form").addEventListener("submit", async (ev) => {
         if (!line.startsWith("data: ")) continue;
         const ev = JSON.parse(line.slice(6));
         if (ev.type === "delta") { body.textContent += ev.text; }
-        else if (ev.type === "tool" && ev.state === "started") { $("chat-status").textContent = "Outil en cours : " + ev.name; }
-        else if (ev.type === "tool") { $("chat-status").textContent = "Votre collègue répond…"; }
+        else if (ev.type === "tool" && ev.state === "started") { $("chat-status").textContent = "L’agent prépare…"; }
+        else if (ev.type === "tool") { $("chat-status").textContent = "L’agent prépare…"; }
         else if (ev.type === "end") {
           ended = true;
           body.textContent = ev.text || body.textContent;
@@ -121,10 +128,7 @@ $("text").addEventListener("keydown", (ev) => {
   if (ev.key === "Enter" && !ev.shiftKey) { ev.preventDefault(); $("chat-form").requestSubmit(); }
 });
 
-$("menu-btn").addEventListener("click", () => {
-  const open = $("nav").classList.toggle("open");
-  $("menu-btn").setAttribute("aria-expanded", String(open));
-});
+
 
 async function loadEngagements() {
   const res = await fetch("/api/engagements");
@@ -141,7 +145,7 @@ async function loadEngagements() {
     h.textContent = e.client + " — " + e.sujet;
     const meta = document.createElement("p");
     meta.className = "meta";
-    meta.textContent = nf.format(new Date(e.echeance * 1000)) + " · " + e.statut + " · certitude : " + e.certitude;
+    meta.textContent = nf.format(new Date(e.echeance * 1000)) + " · " + libelle(e.statut) + " · certitude " + (CERTITUDES[e.certitude] || e.certitude);
     const p = document.createElement("p");
     p.textContent = e.decision;
     card.append(h, meta, p);
@@ -155,7 +159,9 @@ async function loadDrafts() {
   const data = await res.json();
   const box = $("drafts-list");
   box.replaceChildren();
-  if (!data.drafts.length) { box.textContent = "Aucun brouillon en attente."; return; }
+  updateBadge(data.drafts);
+  if (!data.drafts.length) { box.textContent = "Aucun brouillon pour l’instant. À l’échéance d’un engagement, l’agent en prépare un ici."; return; }
+  const df = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
   for (const d of data.drafts) {
     const card = document.createElement("article");
     card.className = "card";
@@ -165,9 +171,9 @@ async function loadDrafts() {
     meta.className = "meta";
     const tag = document.createElement("span");
     tag.className = "tag" + (d.statut === "en_attente" ? " wait" : (d.statut === "refuse" ? " bad" : ""));
-    tag.textContent = d.statut;
-    meta.append(tag);
-    if (d.livraison) meta.append(" " + d.livraison);
+    tag.textContent = libelle(d.statut);
+    meta.append(tag, " préparé le " + df.format(new Date(d.cree * 1000)));
+    if (d.livraison) meta.append(" · " + d.livraison);
     const body = document.createElement("pre");
     body.textContent = d.corps;
     card.append(h, meta, body);
@@ -192,26 +198,128 @@ async function loadDrafts() {
       no.addEventListener("click", () => decide(false));
       actions.append(ok, no);
       card.append(actions);
+    } else if (d.statut === "approuve") {
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const copy = document.createElement("button");
+      copy.className = "btn ghost"; copy.textContent = "Copier le texte";
+      copy.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(d.corps); copy.textContent = "Copié ✓"; }
+        catch (err) { const r = document.createRange(); r.selectNodeContents(body);
+          const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); copy.textContent = "Texte sélectionné : Ctrl+C"; }
+      });
+      actions.append(copy);
+      card.append(actions);
     }
     box.append(card);
   }
 }
 
+function updateBadge(drafts) {
+  const n = drafts.filter(d => d.statut === "en_attente").length;
+  const tab = document.querySelector('.tab[data-view="drafts"]');
+  tab.textContent = "Approbations";
+  if (n) { const b = document.createElement("span"); b.className = "badge"; b.textContent = String(n);
+    b.setAttribute("aria-label", n + " à valider"); tab.append(b); }
+}
+async function refreshBadge() {
+  if ($("app-view").hidden) return;
+  const res = await fetch("/api/drafts").catch(() => null);
+  if (!res || res.status !== 200) return;
+  const data = await res.json();
+  updateBadge(data.drafts);
+  if (!$("view-drafts").hidden) loadDrafts();
+}
+setInterval(refreshBadge, 10000);
+
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("on", t === tab));
+    document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === tab));
     const view = tab.dataset.view;
-    $("view-chat").hidden = view !== "chat";
-    $("view-soon").hidden = view !== "soon";
+    $("app-view").dataset.view = view;
+    $("view-chat").hidden = !["chat", "kanban"].includes(view);
     $("view-engagements").hidden = view !== "engagements";
     $("view-drafts").hidden = view !== "drafts";
-    $("view-credits").hidden = view !== "credits";
-    if (view === "soon") $("soon-title").textContent = tab.dataset.title;
     if (view === "engagements") loadEngagements();
     if (view === "drafts") loadDrafts();
-    $("nav").classList.remove("open");
-    $("menu-btn").setAttribute("aria-expanded", "false");
+    if (view === "kanban") loadKanban();
   });
 }
 
+const COLUMNS = [["todo", "À trier / À faire", ["triage", "todo"]], ["ready", "Prêt", ["ready"]], ["running", "En cours", ["running"]], ["blocked", "Bloqué / Planifié", ["blocked", "scheduled"]], ["review", "En revue", ["review"]], ["done", "Terminé", ["done"]]];
+let selectedCard = null;
+async function kanban(op, data) {
+  const res = await fetch("/api/kanban/" + op, data ? {method:"POST", headers:HEADERS, body:JSON.stringify(data)} : {});
+  const result = await res.json();
+  if (!res.ok) throw new Error(result.error || "Kanban indisponible");
+  return result;
+}
+function node(tag, text, cls) {
+  const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; return el;
+}
+async function loadKanban() {
+  if ($("app-view").hidden) return;
+  try {
+    const result = await kanban("list");
+    const tasks = Array.isArray(result) ? result : (result.tasks || []);
+    $("board").replaceChildren();
+    for(const [key, title, states] of COLUMNS) {
+      const cards = tasks.filter(t => states.includes(t.status));
+      const col = node("section", "", "column"); col.dataset.status = key;
+      const h = node("h3", title); h.append(node("span", String(cards.length))); col.append(h);
+      for(const card of cards) {
+        const b = node("button", card.title, "task");
+        b.append(node("small", card.assignee || "Non affectée"));
+        b.addEventListener("click", () => openCard(card.id)); col.append(b);
+      }
+      $("board").append(col);
+    }
+    $("kanban-status").textContent = "À jour · actualisation toutes les 10 s";
+  } catch(err) { $("kanban-status").textContent = "Kanban indisponible"; }
+}
+async function openCard(id) {
+  try {
+    const result = await kanban("show?id=" + encodeURIComponent(id));
+    const task = result.task || result;
+    selectedCard = id;
+    $("create-card").hidden = true; $("card-detail").hidden = false;
+    $("card-title").textContent = task.title;
+    $("detail-body").textContent = task.body || "Sans description.";
+    $("detail-meta").textContent = (COLUMNS.find(c => c[2].includes(task.status)) || [null,task.status])[1] + " · " + (task.assignee || "Non affectée");
+    $("comments").replaceChildren(...(result.comments || task.comments || []).map(c => node("p", (c.author || "Équipe") + " · " + (c.body || c.text || c.content || ""))));
+    $("card-actions").replaceChildren();
+    for(const [op, label] of [["complete","Terminer"],[task.status === "blocked" ? "unblock" : "block",task.status === "blocked" ? "Débloquer" : "Bloquer"],["archive","Archiver"]]) {
+      const b = node("button", label, "btn ghost");
+      b.addEventListener("click", async () => {
+        b.disabled = true;
+        try { await kanban(op, {id, ...(op === "block" ? {text:"Bloquée depuis Mission Control"} : {})});
+          if(op === "archive") $("card-dialog").close(); else await openCard(id);
+          await loadKanban();
+        } catch(err) { $("card-error").textContent = err.message; }
+        finally { b.disabled = false; }
+      }); $("card-actions").append(b);
+    }
+    $("card-error").textContent = "";
+    if(!$("card-dialog").open) $("card-dialog").showModal();
+  } catch(err) { $("kanban-status").textContent = err.message; }
+}
+$("new-card").addEventListener("click", () => {
+  selectedCard = null; $("card-title").textContent = "Nouvelle carte";
+  $("create-card").hidden = false; $("card-detail").hidden = true;
+  $("create-card").reset(); $("card-error").textContent = ""; $("card-dialog").showModal();
+});
+$("close-card").addEventListener("click", () => $("card-dialog").close());
+$("create-card").addEventListener("submit", async ev => {
+  ev.preventDefault(); const btn = ev.submitter; btn.disabled = true;
+  try { await kanban("create", {title:$("card-name").value,body:$("card-body").value}); $("card-dialog").close(); await loadKanban(); }
+  catch(err) { $("card-error").textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+$("comment-form").addEventListener("submit", async ev => {
+  ev.preventDefault(); const btn = ev.submitter; btn.disabled = true;
+  try { await kanban("comment", {id:selectedCard,text:$("comment-text").value}); $("comment-text").value = ""; await openCard(selectedCard); }
+  catch(err) { $("card-error").textContent = err.message; }
+  finally { btn.disabled = false; }
+});
+setInterval(loadKanban,10000);
 start();

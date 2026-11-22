@@ -34,6 +34,11 @@ sed -i -E '/^ARPAGONA_(SERVICE_TOKEN_FILE|API_URL)=/d' "$HERMES_HOME/.env"
 printf 'ARPAGONA_API_URL=http://127.0.0.1:8700\nARPAGONA_SERVICE_TOKEN_FILE=%s\n' \
   "$HERMES_HOME/arpagona_service_token" >> "$HERMES_HOME/.env"
 chown hermes-arpagona:hermes-arpagona "$HERMES_HOME/.env"; chmod 600 "$HERMES_HOME/.env"
+# Jeton distinct pour la passerelle Kanban, partagé uniquement avec les deux services.
+KTOKEN=/etc/arpagona-api/kanban_token
+[ -s "$KTOKEN" ] || openssl rand -hex 32 > "$KTOKEN"
+chown root:arpagona-api "$KTOKEN"; chmod 640 "$KTOKEN"
+install -m 600 -o hermes-arpagona -g hermes-arpagona "$KTOKEN" "$HERMES_HOME/arpagona_kanban_token"
 umask 022
 
 rm -rf "$REL.tmp"; mkdir -p "$REL.tmp"
@@ -54,7 +59,10 @@ bash "$REL/deploy/atlas/politique-outils.sh"
 systemctl restart hermes-arpagona-gateway.service
 
 install -m 644 "$REL/deploy/atlas/arpagona-api.service" /etc/systemd/system/arpagona-api.service
+install -m 644 "$REL/deploy/atlas/kanban-bridge.service" /etc/systemd/system/kanban-bridge.service
 systemctl daemon-reload
+systemctl enable --now kanban-bridge.service
+systemctl restart kanban-bridge.service
 systemctl enable arpagona-api.service >/dev/null 2>&1
 systemctl restart arpagona-api.service
 for _ in $(seq 1 20); do

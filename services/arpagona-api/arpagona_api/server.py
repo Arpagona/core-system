@@ -14,12 +14,13 @@ from pathlib import Path
 from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
 from .store import SESSION_TTL_S, Store
+from .kanban import KanbanClient
 
 COOKIE = "arpagona_session"
 MAX_BODY = 16 * 1024
 MAX_TEXT = 8000
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml"}
+                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_S = 60
 
@@ -32,6 +33,7 @@ class App:
         self.static_dir = static_dir.resolve()
         self.cookie_secure = cookie_secure
         self.service_token = service_token
+        self.kanban: KanbanClient | None = None
         self._fails: dict[str, tuple[int, float]] = {}
         self._fails_lock = threading.Lock()
 
@@ -145,6 +147,8 @@ def make_handler(app: App):
                 if not user:
                     return self._json(401, {"error": "non connecté"})
                 return self._json(200, {"login": user["login"], "name": user["display_name"]})
+            if path.startswith("/api/kanban/"):
+                return self._kanban(path, False)
             if path == "/api/conversation":
                 return self._conversation()
             if path == "/api/engagements":
@@ -163,6 +167,8 @@ def make_handler(app: App):
                 return self._login()
             if path == "/api/logout":
                 return self._logout()
+            if path.startswith("/api/kanban/"):
+                return self._kanban(path, True)
             if path == "/api/chat":
                 return self._chat()
             if path == "/api/drafts/decide":
@@ -172,6 +178,30 @@ def make_handler(app: App):
             if path == "/internal/drafts":
                 return self._internal_draft()
             return self._json(404, {"error": "inconnu"})
+
+        def _kanban(self, path, mutation):
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            op = path.removeprefix("/api/kanban/")
+            if mutation:
+                data = self._body()
+                allowed = {"create", "comment", "complete", "block", "unblock", "archive"}
+            else:
+                allowed = {"list", "show"}
+                from urllib.parse import parse_qs, urlsplit
+                query = parse_qs(urlsplit(self.path).query)
+                data = {"id": query["id"][0]} if "id" in query else {}
+            if op not in allowed or data is None:
+                return self._json(400, {"error": "opération invalide"})
+            data.pop("author", None)
+            if op == "comment":
+                # L'auteur vient du compte connecté, jamais du navigateur.
+                data["author"] = user["display_name"]
+            client = getattr(app, "kanban", None)
+            status, result = client.call(op, data) if client else (503, {"error": "Kanban indisponible"})
+            app.store.audit(user["id"], "kanban_" + op, str(status) + " " + str(data.get("id", ""))[:64])
+            return self._json(status, result)
 
         # --- fichiers statiques ---------------------------------------------
         def _static(self, path: str) -> None:
@@ -462,7 +492,12 @@ def main() -> None:
     app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1")
     token_file = os.environ.get("ARPAGONA_SERVICE_TOKEN_FILE", "")
     app.service_token = Path(token_file).read_text(encoding="ascii").strip() if token_file else ""
-    start_trigger(app)
+    kanban_file = os.environ.get("ARPAGONA_KANBAN_TOKEN_FILE", "")
+    if kanban_file:
+        kanban_token = Path(kanban_file).read_text(encoding="ascii").strip()
+        if kanban_token:
+            app.kanban = KanbanClient(kanban_token, os.environ.get("ARPAGONA_KANBAN_URL", "http://127.0.0.1:8701"))
+    start_trigger(app, float(os.environ.get("ARPAGONA_TRIGGER_INTERVAL", "30")))
     server = ThreadingHTTPServer((host, port), make_handler(app))
     server.daemon_threads = True
     try:

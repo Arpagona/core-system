@@ -129,6 +129,26 @@ class Store:
         )
         return int(cur.lastrowid or 0)
 
+    def set_password(self, login: str, password: str) -> bool:
+        """Remplace le mot de passe et ferme les sessions ouvertes du compte."""
+        if len(password) < 12:
+            raise ValueError("mot de passe trop court (12 caractères minimum)")
+        salt = secrets.token_bytes(16)
+        with self._lock:
+            row = self._db.execute("SELECT id FROM users WHERE login = ?", (login,)).fetchone()
+            if row is None:
+                return False
+            self._db.execute("BEGIN")
+            try:
+                self._db.execute("UPDATE users SET pw_salt = ?, pw_hash = ? WHERE id = ?",
+                                 (salt, _hash_password(password, salt), row["id"]))
+                self._db.execute("DELETE FROM web_sessions WHERE user_id = ?", (row["id"],))
+                self._db.execute("COMMIT")
+            except Exception:
+                self._db.execute("ROLLBACK")
+                raise
+        return True
+
     def delete_user(self, login: str) -> bool:
         """Supprime un compte et tout ce qui lui appartient (comptes de recette). Transaction unique."""
         with self._lock:

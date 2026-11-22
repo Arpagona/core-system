@@ -9,4 +9,5 @@ Lire README.md, CONTRIBUTING.md et les ADR pertinents avant modification.
 - Courriels en brouillon ; aucun effet externe, déploiement de production, permission ou engagement sans validation humaine appropriée.
 - Ne pas présenter une proposition comme une décision ni inventer un accord.
 
-Validation locale : voir `.github/workflows/ci.yml`.
+Validation locale : voir `.github/workflows/ci.yml` ; parcours complet sans clé : `python3 -m unittest discover -s tests/dev`. Démarrage : `docs/DEMARRAGE-DEVELOPPEUR.md`.
+- Python : bibliothèque standard seulement (décision du 12/11) ; ajouter une dépendance demande une discussion.

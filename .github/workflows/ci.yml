@@ -12,8 +12,12 @@ jobs:
       - name: Tests API
         working-directory: services/arpagona-api
         run: /usr/bin/python3 -m unittest discover -s tests
-      - name: Compiler le plugin
-        run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py
+      - name: Tests passerelle Kanban
+        run: /usr/bin/python3 -m unittest discover -s services/kanban-bridge/tests
+      - name: Compiler le plugin et les outils de développement
+        run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py dev/*.py
+      - name: Parcours complet sur poste local (moteur et Kanban simulés)
+        run: /usr/bin/python3 -m unittest discover -s tests/dev -v
       - name: Contrôles de sécurité ciblés
         run: /usr/bin/python3 scripts/security_checks.py
       - name: Vérifier JavaScript

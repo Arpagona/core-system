@@ -8,6 +8,15 @@ PREVIOUS="$(cat "$ROOT/previous" 2>/dev/null || true)"
 CURRENT="$(readlink "$ROOT/current")"
 ln -sfn "$PREVIOUS" "$ROOT/current"
 echo "$CURRENT" > "$ROOT/previous"
+if [ -f "$PREVIOUS/deploy/atlas/kanban-bridge.service" ]; then
+  install -m 644 "$PREVIOUS/deploy/atlas/kanban-bridge.service" /etc/systemd/system/kanban-bridge.service
+  systemctl daemon-reload
+  systemctl restart kanban-bridge.service
+else
+  systemctl disable --now kanban-bridge.service || true
+fi
+install -m 644 "$PREVIOUS/deploy/atlas/arpagona-api.service" /etc/systemd/system/arpagona-api.service
+systemctl daemon-reload
 systemctl restart arpagona-api.service
 sleep 2
 systemctl is-active arpagona-api.service
