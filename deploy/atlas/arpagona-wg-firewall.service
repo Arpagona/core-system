@@ -1,0 +1,15 @@
+[Unit]
+Description=Pare-feu du tunnel WireGuard ARPAGONA (wg0 : Mission Control et SSH seulement, aucun routage)
+Before=wg-quick@wg0.service
+After=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/nft -f /etc/nftables.d/arpagona-wg.nft
+# Pas d'ExecStop : arrêter l'unité ne doit jamais ouvrir le tunnel.
+
+[Install]
+WantedBy=multi-user.target
+RequiredBy=wg-quick@wg0.service

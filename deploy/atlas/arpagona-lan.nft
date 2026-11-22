@@ -5,6 +5,7 @@ table inet arpagona_lan {
   type filter hook input priority -10; policy accept;
   iifname "lo" tcp dport 8700 accept
   ip saddr 192.168.68.0/24 tcp dport 8700 accept
+  iifname "wg0" ip saddr 10.68.100.0/24 tcp dport 8700 accept
   tcp dport 8700 drop
  }
 }
