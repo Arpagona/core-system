@@ -20,7 +20,8 @@ COOKIE = "arpagona_session"
 MAX_BODY = 16 * 1024
 MAX_TEXT = 8000
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
-                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png"}
+                ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
+                ".webmanifest": "application/manifest+json"}
 COMMANDS_HELP = ("Commandes : /new ouvre une nouvelle conversation (l'agent repart d'un fil vide) ; "
                  "/status affiche l'état du compte, du moteur et des engagements ; /help affiche cette aide.")
 LOGIN_MAX_FAILS = 5

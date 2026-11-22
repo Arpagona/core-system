@@ -263,6 +263,16 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(anon.call("GET", "/%2e%2e/secret.html")[0], 404)
         self.assertEqual(anon.call("GET", "/test.db")[0], 404)
 
+    def test_manifeste_application_installable(self):
+        (self.app.static_dir / "manifest.webmanifest").write_text('{"name": "ARPAGONA"}', encoding="utf-8")
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.request("GET", "/manifest.webmanifest")
+        resp = conn.getresponse()
+        self.assertEqual(resp.status, 200)
+        self.assertEqual(resp.getheader("Content-Type"), "application/manifest+json")
+        self.assertIn(b"ARPAGONA", resp.read())
+        conn.close()
+
     def test_suppression_de_compte(self):
         alice = Client(self.port)
         alice.login("alice", PASSWORD_A)
