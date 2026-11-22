@@ -207,7 +207,7 @@ def main() -> int:
         check("C2", "connexion du compte B", b.login(user_b, pw_b) == 200)
         first = a.chat(f"Pour la suite de notre travail : la société fictive {societe} a choisi le {bois} "
                        f"pour sa commande, sa responsable des achats est {contact}, "
-                       f"et le nom de code du projet est {code}. Réponds seulement : noté.")
+                       f"et le nom de code du projet de {societe} est {code}. Réponds seulement : noté.")
         check("C3", "réponse réelle du moteur, reçue en flux",
               first.get("status") == "done" and first.get("deltas", 0) > 0, json.dumps(first)[:200], "modèle")
         recall = a.chat("Quel est le nom de code du projet ? Réponds par le code seul.")
@@ -221,7 +221,7 @@ def main() -> int:
             # Un code au bon format mais différent est une invention du modèle : il compte comme un échec.
             recalled, detail = hindsight_recall(ns, societe)
             check("M0", "la mémoire contient les faits confiés (contrôle serveur)",
-                  all(f in recalled for f in (bois, contact)), detail)
+                  all(f in recalled for f in (bois, contact, code)), detail)
             answered = []
             for _ in range(2):
                 shared = b.chat(f"Que sais-tu de la société {societe} ? Donne le bois, le contact et le nom "
