@@ -4,36 +4,35 @@ Surcouche produit du Hermès Agent officiel épinglé en v0.23.1 : Mission Contr
 
 **État : banc de test, pas de production client.** Ne pas utiliser de données réelles sans validation et garanties adaptées.
 
-## Arborescence
+## Essayer en 2 minutes
 
-- `apps/mission-control-web/` : interface web.
-- `services/arpagona-api/` : API Python et tests.
-- `plugins/arpagona-core/` : outils métier Hermès.
-- `deploy/atlas/` : scripts et documentation du banc.
-- `docs/decisions/` : décisions ; `docs/legacy/` : archives historiques.
-- `tests/e2e/` : recette du banc ; `bench/` et `demo/` : matériel historique à réévaluer.
-
-## Démarrage local
-
-Python système et bibliothèque standard suffisent aux tests. Pour lancer l’API, utiliser une clé de banc locale (distincte de toute clé réelle) et un répertoire de données privé ; la passerelle Hermès est nécessaire au chat.
+Python 3.10+ suffit. Aucune dépendance, aucune clé, aucun modèle payant :
 
 ```sh
-cd services/arpagona-api
-mkdir -p .local && chmod 700 .local
-umask 077
-printf "%s\n" "cle-de-banc-fictive" > .local/hermes_key
-export ARPAGONA_DB="$PWD/.local/arpagona.db"
-export ARPAGONA_HERMES_KEY_FILE="$PWD/.local/hermes_key"
-export ARPAGONA_STATIC_DIR="$PWD/../../apps/mission-control-web"
-/usr/bin/python3 -m arpagona_api.manage add-user test --name "Test"
-/usr/bin/python3 -m arpagona_api.server
+python3 dev/lancer.py
 ```
 
-Ouvrir http://127.0.0.1:8700 ; le mot de passe est demandé au clavier. Ne pas exposer ce serveur de test au réseau.
+Ouvrir http://127.0.0.1:8700, identifiant `demo`, mot de passe `demo-arpagona-2026`. Le moteur Hermès et le Kanban sont simulés ; l'API, la passerelle et le plugin sont les vrais. Puis écrire : « Relance le client Dupont dans 30 secondes au sujet du devis de 200 supports ».
+
+Guide complet : [docs/DEMARRAGE-DEVELOPPEUR.md](docs/DEMARRAGE-DEVELOPPEUR.md). État et lots proposés : [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md).
+
+## Arborescence
+
+- `apps/mission-control-web/` : interface web (sans framework ni build).
+- `services/arpagona-api/` : API Python et tests.
+- `services/kanban-bridge/` : passerelle vers le Kanban officiel d'Hermès.
+- `plugins/arpagona-core/` : outils métier Hermès (engagements, brouillons ; aucun envoi).
+- `dev/` : lanceur local, moteur et Kanban simulés. `tests/dev/` : parcours complet.
+- `deploy/atlas/` : scripts et documentation du banc.
+- `docs/decisions/` : décisions ; `docs/legacy/` : archives historiques.
+- `tests/e2e/` : recette du banc réel ; `bench/` et `demo/` : matériel historique à réévaluer.
+
+## Tests
+
+Les commandes de la CI sont listées dans [docs/DEMARRAGE-DEVELOPPEUR.md](docs/DEMARRAGE-DEVELOPPEUR.md#tester). Le parcours complet local prend environ 2 secondes :
 
 ```sh
-cd services/arpagona-api
-/usr/bin/python3 -m unittest discover -s tests
+python3 -m unittest discover -s tests/dev -v
 ```
 
 ## Mission Control
