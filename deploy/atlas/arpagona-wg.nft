@@ -1,0 +1,18 @@
+table inet arpagona_wg
+delete table inet arpagona_wg
+# Accès distant par WireGuard (wg0, 10.68.100.0/24) : seuls Mission Control et SSH de la VM.
+# Priorité -20 : évaluée avant arpagona_lan. Aucun routage depuis ou vers le tunnel.
+table inet arpagona_wg {
+ chain input {
+  type filter hook input priority -20; policy accept;
+  iifname "wg0" ct state established,related accept
+  iifname "wg0" ip saddr 10.68.100.0/24 tcp dport { 22, 8700 } accept
+  iifname "wg0" ip saddr 10.68.100.0/24 icmp type echo-request accept
+  iifname "wg0" drop
+ }
+ chain forward {
+  type filter hook forward priority -20; policy accept;
+  iifname "wg0" drop
+  oifname "wg0" drop
+ }
+}
