@@ -323,3 +323,8 @@ $("comment-form").addEventListener("submit", async ev => {
 });
 setInterval(loadKanban,10000);
 start();
+
+// Application installable (Android) : le service worker n'existe qu'en contexte sécurisé (HTTPS ou origine autorisée).
+if ("serviceWorker" in navigator && window.isSecureContext) {
+  navigator.serviceWorker.register("/sw.js", { scope: "/" }).catch(() => {});
+}

@@ -30,6 +30,20 @@ Poste du contributeur ──WireGuard (UDP 51820, chiffré)──► box ──r
 
 Le tunnel ne route que l'adresse 10.68.100.1 : le reste du trafic du poste ne passe pas par le banc.
 
+## Application Android (Mission Control installable)
+
+Mission Control est une application web installable (manifeste, icône, service worker, page « hors ligne »).
+Aucune donnée de l'API n'est mise en cache sur le téléphone.
+
+Tant que le banc est servi en HTTP, Chrome Android n'installe l'application qu'après avoir déclaré l'adresse du banc comme sûre :
+
+1. Tunnel WireGuard du téléphone actif (application WireGuard, configuration importée par QR code).
+2. Dans Chrome : ouvrir `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, saisir `http://10.68.100.1:8700`, choisir **Enabled**, puis **Relaunch**.
+3. Ouvrir http://10.68.100.1:8700 ; menu ⋮ → **Installer l'application** (ou « Ajouter à l'écran d'accueil » → Installer).
+4. L'icône ARPAGONA apparaît ; l'application s'ouvre en plein écran.
+
+Ce réglage ne concerne que cette adresse privée, joignable uniquement par le tunnel. Il disparaîtra avec le passage en HTTPS (prévu avant tout client).
+
 ## Côté administrateur (sur la VM, en root)
 
 ```sh
