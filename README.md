@@ -14,7 +14,7 @@ python3 dev/lancer.py
 
 Ouvrir http://127.0.0.1:8700, identifiant `demo`, mot de passe `demo-arpagona-2026`. Le moteur Hermès et le Kanban sont simulés ; l'API, la passerelle et le plugin sont les vrais. Puis écrire : « Relance le client Dupont dans 30 secondes au sujet du devis de 200 supports ».
 
-Guide complet : [docs/DEMARRAGE-DEVELOPPEUR.md](docs/DEMARRAGE-DEVELOPPEUR.md). État et lots proposés : [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md).
+Guide complet : [docs/DEMARRAGE-DEVELOPPEUR.md](docs/DEMARRAGE-DEVELOPPEUR.md). Brancher une brique : [docs/INTEGRER-UNE-BRIQUE.md](docs/INTEGRER-UNE-BRIQUE.md). État et lots proposés : [docs/FEUILLE-DE-ROUTE.md](docs/FEUILLE-DE-ROUTE.md).
 
 ## Arborescence
 
