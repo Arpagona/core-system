@@ -51,6 +51,8 @@ class FakeEngine:
                 self._send(202, {"run_id": run_id, "status": "started"})
 
             def do_GET(self):
+                if self.path == "/v1/health":
+                    return self._send(200, {"status": "ok"})
                 run_id = self.path.split("/")[3]
                 if self.path.endswith("/events"):
                     self.send_response(200)
@@ -189,6 +191,53 @@ class ApiTest(unittest.TestCase):
         self.store.add_message(conv["id"], "assistant", "", "pending", "run_x")
         messages = json.loads(alice.call("GET", "/api/conversation")[1])["messages"]
         self.assertEqual((messages[-1]["status"], messages[-1]["text"]), ("done", "réponse arrivée pendant l'absence"))
+
+    def _events(self, raw):
+        return [json.loads(b[6:]) for b in raw.split("\n\n") if b.startswith("data: ")]
+
+    def test_new_ouvre_une_conversation_neuve(self):
+        alice = Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        alice.call("POST", "/api/chat", {"text": "premier fil"})
+        status, raw, _ = alice.call("POST", "/api/chat", {"text": "/new"})
+        end = self._events(raw)[-1]
+        self.assertEqual((status, end["command"], end["reset"]), (200, "/new", True))
+        self.assertEqual(len(self.engine.sessions), 1, "/new ne doit jamais partir au moteur")
+        messages = json.loads(alice.call("GET", "/api/conversation")[1])["messages"]
+        self.assertEqual([m["role"] for m in messages], ["assistant"])
+        self.assertNotIn("premier fil", json.dumps(messages, ensure_ascii=False))
+        alice.call("POST", "/api/chat", {"text": "second fil"})
+        self.assertEqual(len(set(self.engine.sessions)), 2, "le fil neuf doit avoir sa propre session moteur")
+
+    def test_new_garde_les_autres_comptes_et_l_archive(self):
+        alice, bob = Client(self.port), Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        bob.login("bruno", PASSWORD_B)
+        bob.call("POST", "/api/chat", {"text": "fil de bob"})
+        alice.call("POST", "/api/chat", {"text": "/new"})
+        bob_msgs = json.loads(bob.call("GET", "/api/conversation")[1])["messages"]
+        self.assertIn("fil de bob", json.dumps(bob_msgs, ensure_ascii=False))
+        uid = self.store.check_password("alice", PASSWORD_A)["id"]
+        self.assertEqual(self.store.conversation_count(uid), 2)
+
+    def test_status_et_commande_inconnue(self):
+        alice = Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        end = self._events(alice.call("POST", "/api/chat", {"text": "/status"})[1])[-1]
+        self.assertIn("Moteur Hermès : joignable", end["text"])
+        self.assertIn("Engagements actifs : 0", end["text"])
+        end = self._events(alice.call("POST", "/api/chat", {"text": "/inconnue"})[1])[-1]
+        self.assertIn("Commande inconnue", end["text"])
+        self.assertEqual(self.engine.sessions, [], "aucune commande ne part au moteur")
+
+    def test_new_refuse_si_reponse_en_cours(self):
+        alice = Client(self.port)
+        alice.login("alice", PASSWORD_A)
+        uid = self.store.check_password("alice", PASSWORD_A)["id"]
+        conv = self.store.conversation_for(uid)
+        self.store.add_message(conv["id"], "assistant", "", "pending", "run_zz")
+        self.engine.runs["run_zz"] = "x"
+        self.assertEqual(alice.call("POST", "/api/chat", {"text": "/new"})[0], 409)
 
     def test_moteur_arrete(self):
         alice = Client(self.port)

@@ -22,6 +22,8 @@ MAX_TEXT = 8000
 STATIC_TYPES = {".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8",
                 ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png",
                 ".webmanifest": "application/manifest+json"}
+COMMANDS_HELP = ("Commandes : /new ouvre une nouvelle conversation (l'agent repart d'un fil vide) ; "
+                 "/status affiche l'état du compte, du moteur et des engagements ; /help affiche cette aide.")
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_S = 60
 
@@ -271,6 +273,8 @@ def make_handler(app: App):
             conv = app.store.conversation_for(user["id"])
             if app.store.has_pending(conv["id"]):
                 return self._json(409, {"error": "une réponse est déjà en cours"})
+            if text.startswith("/"):
+                return self._command(user, conv, text)
             app.store.add_message(conv["id"], "user", text)
             answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending")
             try:
@@ -317,6 +321,55 @@ def make_handler(app: App):
             final = next((r for r in app.store.messages(conv["id"]) if r["id"] == answer_id), None)
             send({"type": "end", "id": answer_id, "status": final["status"] if final else "pending",
                   "text": final["content"] if final else ""})
+
+        # --- commandes de conversation (traitées ici, jamais envoyées au modèle) ---
+        def _command(self, user, conv, text: str) -> None:
+            name = text.split()[0].lower()
+            reset = False
+            if name == "/new":
+                old_count = len(app.store.messages(conv["id"]))
+                conv = app.store.new_conversation(user["id"])
+                reset = True
+                answer = ("Nouvelle conversation ouverte. L'agent repart d'un fil vide ; "
+                          f"l'ancienne ({old_count} message(s)) reste archivée. "
+                          "La mémoire d'équipe et vos engagements sont conservés.")
+                app.store.audit(user["id"], "commande", "/new")
+            elif name == "/status":
+                app.store.add_message(conv["id"], "user", text)
+                answer = self._status_text(user, conv)
+                app.store.audit(user["id"], "commande", "/status")
+            elif name == "/help":
+                app.store.add_message(conv["id"], "user", text)
+                answer = COMMANDS_HELP
+            else:
+                app.store.add_message(conv["id"], "user", text)
+                answer = f"Commande inconnue : {name}. " + COMMANDS_HELP
+            answer_id = app.store.add_message(conv["id"], "assistant", answer)
+            payload = b"".join(
+                b"data: " + json.dumps(event, ensure_ascii=False).encode("utf-8") + b"\n\n"
+                for event in ({"type": "start", "id": answer_id},
+                              {"type": "end", "id": answer_id, "status": "done", "text": answer,
+                               "command": name, "reset": reset}))
+            self._headers(200, "text/event-stream; charset=utf-8", len(payload), {"X-Accel-Buffering": "no"})
+            self.wfile.write(payload)
+
+        def _status_text(self, user, conv) -> str:
+            started = time.strftime("%d/%m/%Y %H:%M", time.localtime(conv["created_at"]))
+            messages = app.store.messages(conv["id"])
+            engagements = app.store.engagements(user["id"])
+            active = [e for e in engagements if e["status"] in ("planifie", "en_preparation", "pret", "en_attente")]
+            waiting = [d for d in app.store.drafts(user["id"]) if d["status"] == "en_attente"]
+            engine = "joignable" if app.hermes.healthy() else "INJOIGNABLE"
+            return "\n".join([
+                f"Compte : {user['display_name']} ({user['login']})",
+                f"Conversation ouverte depuis le {started} : {len(messages)} message(s)",
+                f"Conversations au total : {app.store.conversation_count(user['id'])}",
+                f"Session moteur : …{conv['hermes_session_id'][-6:]}",
+                f"Moteur Hermès : {engine}",
+                f"Engagements actifs : {len(active)} sur {len(engagements)}",
+                f"Brouillons à valider : {len(waiting)}",
+                "Mémoire : mémoire d'équipe de l'instance (non effacée par /new)",
+            ])
 
         # --- engagements et approbations (utilisateur) ----------------------
         def _engagements(self) -> None:
