@@ -44,6 +44,8 @@ bash $S uninstall                                         # coupe le tunnel
 
 Sur la box (et le routeur intermédiaire s'il y a double NAT) : rediriger UDP 51820 vers 192.168.68.240.
 
+Cartes de démonstration (fictives, sans affectation) : `bash /opt/arpagona/current/deploy/atlas/demo-kanban.sh`.
+
 Compte Mission Control : `python3 -m arpagona_api.manage add-user|set-password|del-user <login> --password-stdin`, en tant que `arpagona-api`, avec `ARPAGONA_DB=/var/lib/arpagona-api/arpagona.db`.
 
 ## Preuves (22/11/2026, pair d'essai isolé dans un espace réseau dédié)
