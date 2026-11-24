@@ -56,7 +56,7 @@ backup_cmd() {  # sauvegarde vérifiée AVANT toute migration (privé : root seu
   local dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
   install -d -m 700 "$BACKUP_ROOT" "$dir"
   # Services actifs : tar peut signaler « fichier modifié pendant la lecture » (code 1) ; l'archive est vérifiée plus bas.
-  tar --warning=no-file-changed --exclude='*.sock' --exclude='models_dev_cache.json' --exclude='*/cache' --exclude='*/logs' \
+  tar --warning=no-file-changed --exclude='*.sock' --exclude='models_dev_cache.json' --exclude='*/cache' --exclude='*/logs' --exclude='*/.hermes/installs' \
     -czf "$dir/agents.tar.gz" -C /srv agents || [ $? -eq 1 ]
   python3 - "$dir" "$LEGACY/kanban.db" <<'PY'
 import sqlite3, sys
@@ -244,7 +244,9 @@ migrate_kanban_cmd() {  # Kanban d'entreprise unique : reprise non destructive d
     cp -p "$LEGACY/config.yaml" "$LEGACY/config.yaml.avant-deux-zones"
     (cd /tmp && sudo -u hermes-arpagona env HOME=/srv/hermes-arpagona HERMES_HOME="$LEGACY" "$CLI" config set kanban.dispatch_in_gateway false >/dev/null)
     systemctl restart hermes-arpagona-gateway.service || true
+    sleep 5
   fi
+  acl_cmd   # Hermès remet .hermes à 0700 au démarrage : la lecture du socle par les comptes agents est rejouée
   local logins=() entry login
   for entry in "${AGENTS[@]}"; do IFS='|' read -r login _ <<<"$entry"; logins+=("$login"); done
   python3 "$REL/deploy/atlas/migrate_kanban_equipe.py" "$CLI" "$LEGACY" "${logins[@]}"
