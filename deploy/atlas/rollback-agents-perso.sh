@@ -12,11 +12,16 @@ for l in $LOGINS; do
   systemctl disable --now "arpagona-agent@$l.service" "arpagona-kanban-bridge@$l.service" 2>/dev/null || true
 done
 systemctl disable --now hindsight-gate.service 2>/dev/null || true
+systemctl reset-failed "arpagona-agent@*.service" "arpagona-kanban-bridge@*.service" 2>/dev/null || true  # l'arrêt de Hermès sort en code 1
 rm -f /etc/systemd/system/arpagona-api.service.d/agents.conf
 rmdir /etc/systemd/system/arpagona-api.service.d 2>/dev/null || true
 systemctl daemon-reload
 systemctl restart arpagona-api.service
-curl -fsS -m 5 http://127.0.0.1:8700/api/health; echo
+for _ in $(seq 1 20); do
+  sleep 2
+  curl -fsS -m 3 http://127.0.0.1:8700/api/health && break
+done
+echo
 if [ "${1:-}" = "--purge" ]; then
   for l in $LOGINS; do
     userdel "agent-$l" 2>/dev/null || true
