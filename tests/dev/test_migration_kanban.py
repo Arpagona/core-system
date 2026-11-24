@@ -59,6 +59,18 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(len(self.company), 4)  # aucun doublon
         self.assertEqual(self.company[0]["title"], "[DEMO] existante")  # carte existante intacte
 
+    def test_marqueur_empeche_la_resurrection_d_une_carte_archivee(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            first = migre.migrate("/cli", "/h", ["mael", "thibaud"], FakeCli(self.personal, self.company),
+                                  reader=lambda login: self.personal[login], markers=tmp)
+            self.assertEqual(first["reprises"], 3)
+            self.company[:] = [t for t in self.company if "carte" not in t["title"]]  # archivée depuis (n'est plus listée)
+            again = migre.migrate("/cli", "/h", ["mael", "thibaud"], FakeCli(self.personal, self.company),
+                                  reader=lambda login: self.personal[login], markers=tmp)
+            self.assertEqual(again["reprises"], 0)
+            self.assertEqual(sorted(again["comptes_deja_repris"]), ["mael", "thibaud"])
+
     def test_compte_invalide_refuse(self):
         with self.assertRaises(ValueError):
             migre.migrate("/cli", "/h", ["Mael;rm"], FakeCli({}, []), reader=lambda login: [])

@@ -249,7 +249,8 @@ migrate_kanban_cmd() {  # Kanban d'entreprise unique : reprise non destructive d
   acl_cmd   # Hermès remet .hermes à 0700 au démarrage : la lecture du socle par les comptes agents est rejouée
   local logins=() entry login
   for entry in "${AGENTS[@]}"; do IFS='|' read -r login _ <<<"$entry"; logins+=("$login"); done
-  python3 "$REL/deploy/atlas/migrate_kanban_equipe.py" "$CLI" "$LEGACY" "${logins[@]}"
+  install -d -m 750 -o root -g root "$CONF"
+  python3 "$REL/deploy/atlas/migrate_kanban_equipe.py" "$CLI" "$LEGACY" "$CONF" "${logins[@]}"
 }
 
 seed_kanban() {  # cartes fictives sur le tableau d'entreprise : une carte et une décision bloquée par responsable ; une seule fois
