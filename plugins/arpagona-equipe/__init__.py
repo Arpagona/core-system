@@ -181,13 +181,15 @@ def team_recall(args: dict, **_kw) -> str:
     if not query:
         return json.dumps({"error": "« requete » obligatoire"}, ensure_ascii=False)
     try:
-        status, result = _gate("memories/recall", {"query": query[:1000], "max_tokens": 2000})
+        status, result = _gate("memories/recall", {"query": query[:1000], "max_tokens": 2000,
+                                                  "types": ["world", "experience"]})
     except EquipeError as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)
     if status != 200:
         return json.dumps({"error": f"refusé par le portier (HTTP {status})"}, ensure_ascii=False)
     rows = []
-    for hit in (result.get("results") or [])[:10]:
+    # Seuls les faits d'origine sont rendus : les « observations » (synthèses automatiques) perdent l'auteur et la source.
+    for hit in [h for h in (result.get("results") or []) if h.get("type") != "observation"][:10]:
         meta = hit.get("metadata") or {}
         rows.append({"fait": hit.get("text", ""), "auteur": meta.get("auteur", ""), "source": meta.get("source", ""),
                      "tags": hit.get("tags", [])})

@@ -65,7 +65,7 @@ Non encore exercée. Procédure prévue : snapshot Proxmox, relance de `install-
 
 ## Agents personnels par utilisateur
 
-Chaque utilisateur (`mael`, `thibaud`) a son agent, sa mémoire, son Kanban et sa boîte mail fictive, isolés par comptes Unix : voir [AGENTS-PERSO.md](AGENTS-PERSO.md).
+Deux zones. Chaque utilisateur (`mael`, `thibaud`) a son agent, sa mémoire personnelle, ses préférences et sa boîte mail fictive, privés (comptes Unix). L'entreprise partage sa mémoire d'équipe, ses dossiers clients et un Kanban unique avec un responsable par carte : voir [AGENTS-PERSO.md](AGENTS-PERSO.md).
 
 ## Déploiement reproductible et recette du banc
 
