@@ -55,7 +55,9 @@ team_space_cmd() {  # dossiers clients communs : groupe d'équipe, setgid, ACL p
 backup_cmd() {  # sauvegarde vérifiée AVANT toute migration (privé : root seul)
   local dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
   install -d -m 700 "$BACKUP_ROOT" "$dir"
-  tar --exclude='models_dev_cache.json' --exclude='*/cache' --exclude='*/logs' -czf "$dir/agents.tar.gz" -C /srv agents
+  # Services actifs : tar peut signaler « fichier modifié pendant la lecture » (code 1) ; l'archive est vérifiée plus bas.
+  tar --warning=no-file-changed --exclude='*.sock' --exclude='models_dev_cache.json' --exclude='*/cache' --exclude='*/logs' \
+    -czf "$dir/agents.tar.gz" -C /srv agents || [ $? -eq 1 ]
   python3 - "$dir" "$LEGACY/kanban.db" <<'PY'
 import sqlite3, sys
 dst = sys.argv[1] + "/kanban-entreprise.db"
