@@ -3,8 +3,13 @@
 # Niveau 1 (défaut) : arrête et désactive les services par utilisateur, retire le registre de l'API, qui
 #   revient au moteur commun (hermes-arpagona). Les données des agents (/srv/agents) sont CONSERVÉES.
 # Niveau 2 (--purge) : supprime en plus comptes Unix, données, ACL de traversée, portier et secrets des agents.
-# Niveau 3 (VM entière) : sur Atlas, `qm rollback 100 avant-agents-par-utilisateur-20261124`
-#   (efface tout ce qui a été fait sur la VM depuis le snapshot).
+# Dans les deux niveaux, la zone COMMUNE est conservée : dossiers clients (/srv/arpagona/clients), banque d'équipe
+#   arpagona-equipe et Kanban d'entreprise (cartes reprises incluses). Seuls les espaces personnels sont retirés au niveau 2.
+# Niveau 3 (VM entière) : sur Atlas, `qm rollback 100 avant-deux-zones-20261124` (état d'avant la correction deux zones)
+#   ou `qm rollback 100 avant-agents-par-utilisateur-20261124` (état d'avant tout agent personnel).
+#   Efface tout ce qui a été fait sur la VM depuis le snapshot.
+# Restauration fine (sans toucher la VM) : sauvegarde vérifiée dans /var/backups/arpagona-deux-zones/<horodatage>/
+#   (agents.tar.gz, kanban-entreprise.db, gate.json, agents.json, SHA256SUMS) — voir AGENTS-PERSO.md.
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "à lancer en root" >&2; exit 1; }
 LOGINS="mael thibaud"

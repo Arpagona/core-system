@@ -9,7 +9,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 CLI = os.environ.get('KANBAN_CLI', '/srv/hermes-arpagona/.local/bin/hermes')
-OPS = {'list', 'show', 'create', 'comment', 'complete', 'block', 'unblock', 'archive'}
+OPS = {'list', 'show', 'create', 'assign', 'comment', 'complete', 'block', 'unblock', 'archive'}
+LOGIN = re.compile(r'[a-z][a-z0-9_-]{0,31}')
 
 
 def text(value, limit, required=True):
@@ -21,20 +22,33 @@ def text(value, limit, required=True):
 def arguments(op, data):
     if op not in OPS or not isinstance(data, dict):
         raise ValueError('opération interdite')
-    allowed = {'title', 'body'} if op == 'create' else ({'id', 'text', 'author'} if op == 'comment' else {'id', 'text'} if op == 'block' else ({'id'} if op != 'list' else set()))
+    allowed = ({'title', 'body', 'assignee', 'created_by'} if op == 'create' else {'id', 'assignee'} if op == 'assign'
+               else {'id', 'text', 'author'} if op == 'comment' else {'id', 'text'} if op == 'block'
+               else ({'id'} if op != 'list' else set()))
     if set(data) - allowed:
         raise ValueError('champ interdit')
     args = [CLI, 'kanban', op]
     if op == 'list':
         return args + ['--json']
     if op == 'create':
-        # -- sépare le titre des options. Aucun assignee, aucune spécification automatique.
-        return args + ['--body=' + text(data.get('body', ''), 8000, False), '--json', '--', text(data.get('title'), 200)]
+        # -- sépare le titre des options. Responsable et auteur : identifiants de compte seulement.
+        # Sans responsable demandé, la carte reste sans affectation (aucune spécification automatique).
+        extra = []
+        for field, flag in (('assignee', '--assignee='), ('created_by', '--created-by=')):
+            if data.get(field) is not None:
+                if not isinstance(data[field], str) or not LOGIN.fullmatch(data[field]):
+                    raise ValueError('identifiant de compte invalide')
+                extra.append(flag + data[field])
+        return args + extra + ['--body=' + text(data.get('body', ''), 8000, False), '--json', '--', text(data.get('title'), 200)]
     ident = data.get('id')
     if not isinstance(ident, str) or not re.fullmatch(r't_[0-9a-f]{8,32}', ident):
         raise ValueError('identifiant invalide')
     if op == 'show':
         return args + [ident, '--json']
+    if op == 'assign':
+        if not isinstance(data.get('assignee'), str) or not LOGIN.fullmatch(data['assignee']):
+            raise ValueError('identifiant de compte invalide')
+        return args + ['--', ident, data['assignee']]
     if op == 'comment' and 'author' in data:
         args.append('--author=' + text(data.get('author'), 80))
     if op in {'comment', 'block'}:

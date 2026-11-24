@@ -72,10 +72,13 @@ class App:
         return profile.hermes if profile else None
 
     def kanban_for(self, login: str) -> KanbanClient | None:
+        """Kanban d'entreprise : un seul tableau commun, réservé aux comptes qui ont un agent."""
         if self.agents is None:
             return self.kanban
-        profile = self.agents.for_login(login)
-        return profile.kanban if profile else None
+        return self.kanban if self.agents.for_login(login) else None
+
+    def team_logins(self) -> list[str]:
+        return self.agents.logins() if self.agents is not None else []
 
     # --- messages en attente ----------------------------------------------
     def settle_from_engine(self, message_id: int, run_id: str | None, hermes: HermesClient | None = None) -> None:
@@ -202,27 +205,66 @@ def make_handler(app: App):
                 return self._internal_draft()
             return self._json(404, {"error": "inconnu"})
 
+        @staticmethod
+        def _card(result):
+            return result.get("task", result) if isinstance(result, dict) else {}
+
         def _kanban(self, path, mutation):
             user = self._user()
             if not user:
                 return self._json(401, {"error": "non connecté"})
             op = path.removeprefix("/api/kanban/")
+            from urllib.parse import parse_qs, urlsplit
+            query = parse_qs(urlsplit(self.path).query)
             if mutation:
                 data = self._body()
-                allowed = {"create", "comment", "complete", "block", "unblock", "archive"}
+                allowed = {"create", "assign", "comment", "complete", "block", "unblock", "archive"}
             else:
                 allowed = {"list", "show"}
-                from urllib.parse import parse_qs, urlsplit
-                query = parse_qs(urlsplit(self.path).query)
                 data = {"id": query["id"][0]} if "id" in query else {}
             if op not in allowed or data is None:
                 return self._json(400, {"error": "opération invalide"})
-            data.pop("author", None)
-            if op == "comment":
-                # L'auteur vient du compte connecté, jamais du navigateur.
-                data["author"] = user["display_name"]
             client = app.kanban_for(user["login"])
-            status, result = client.call(op, data) if client else (503, {"error": "Kanban indisponible"})
+            if client is None:
+                return self._json(503, {"error": "Kanban indisponible"})
+            login = user["login"]
+            team = app.team_logins()
+            data.pop("author", None)
+            data.pop("created_by", None)
+            if op == "comment":
+                # L'auteur vient du compte connecté, jamais du navigateur. Commenter reste ouvert à toute l'équipe.
+                data["author"] = user["display_name"]
+            if not team:
+                data.pop("assignee", None)  # poste de développement sans équipe : aucune affectation par le navigateur
+            if team and op in ("create", "assign"):
+                chosen = data.get("assignee") or (login if op == "create" else "")
+                if chosen not in team:
+                    return self._json(400, {"error": "responsable inconnu : choisir un compte de l'équipe"})
+                data["assignee"] = chosen
+                if op == "create":
+                    data["created_by"] = login
+            if team and op in ("complete", "block", "unblock", "archive", "assign"):
+                # Visibilité commune ≠ droit de décider : seul le responsable de la carte agit dessus.
+                # Une carte sans responsable reste ouverte à l'équipe ; assign la rattache à un responsable.
+                status, shown = client.call("show", {"id": data.get("id", "")})
+                if status != 200:
+                    return self._json(status, shown)
+                owner = self._card(shown).get("assignee")
+                if owner and owner != login:
+                    app.store.audit(user["id"], "kanban_refusé_" + op, str(data.get("id", ""))[:64])
+                    return self._json(403, {"error": f"seul le responsable de la carte ({owner}) peut le faire"})
+            status, result = client.call(op, data)
+            if team and status == 200 and op in ("list", "show"):
+                scope = query.get("scope", ["all"])[0]
+                if op == "list" and isinstance(result, list):
+                    for card in result:
+                        card["mine"] = card.get("assignee") == login
+                    if scope == "mine":
+                        result = [c for c in result if c["mine"]]
+                elif op == "show":
+                    card = self._card(result)
+                    card["mine"] = card.get("assignee") == login
+                    card["can_decide"] = card.get("assignee") in (None, "", login)
             app.store.audit(user["id"], "kanban_" + op, str(status) + " " + str(data.get("id", ""))[:64])
             return self._json(status, result)
 

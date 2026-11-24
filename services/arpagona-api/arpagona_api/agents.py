@@ -1,10 +1,13 @@
-"""Registre des agents personnels : un moteur, une passerelle Kanban et un jeton d'outils PAR utilisateur.
+"""Registre des agents personnels : un moteur et un jeton d'outils PAR utilisateur.
 
 Le registre est un fichier JSON lu au démarrage (root:arpagona-api, 0640) :
 
     {"agents": {"mael": {"hermes_url": "http://127.0.0.1:8652", "hermes_key_file": "...",
-                          "kanban_url": "http://127.0.0.1:8702", "kanban_token_file": "...",
                           "service_token_file": "..."}}}
+
+Deux zones : l'agent, sa session, sa mémoire personnelle, son courrier et ses jetons sont PRIVÉS à
+l'utilisateur ; le Kanban de l'entreprise est UN SEUL tableau commun (``App.kanban``), chaque carte a
+un responsable. Les champs ``kanban_*`` d'anciens registres sont ignorés.
 
 Règle : quand un registre est chargé, un compte SANS entrée n'a PAS d'agent (refus net, jamais de
 repli sur un moteur commun). Un jeton d'outils n'est valable que pour la session de son propriétaire.
@@ -17,14 +20,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .hermes import HermesClient
-from .kanban import KanbanClient
 
 
 @dataclass(frozen=True)
 class AgentProfile:
     login: str
     hermes: HermesClient
-    kanban: KanbanClient
     service_token: str
 
 
@@ -50,7 +51,6 @@ class AgentRegistry:
             profiles[login] = AgentProfile(
                 login=login,
                 hermes=HermesClient(entry["hermes_url"], _secret(entry["hermes_key_file"])),
-                kanban=KanbanClient(_secret(entry["kanban_token_file"]), entry["kanban_url"]),
                 service_token=_secret(entry["service_token_file"]),
             )
         return cls(profiles)

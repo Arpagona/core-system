@@ -1,0 +1,7 @@
+name: arpagona-equipe
+version: 0.1.0
+description: "Zone commune de l'entreprise : mémoire d'équipe (écriture à destination explicite) et dossiers clients partagés."
+author: ARPAGONA
+kind: standalone
+platforms:
+  - linux

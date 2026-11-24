@@ -567,3 +567,6 @@ dialog::backdrop {
     scroll-behavior:auto!important
   }
 }
+
+/* Kanban d'entreprise : filtre « Toutes / Mes cartes » */
+.filters{display:flex;gap:.5rem;margin:.5rem 0}.filters .btn.on{background:var(--accent,#2a5bd7);color:#fff}

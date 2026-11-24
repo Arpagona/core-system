@@ -20,7 +20,9 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
-ReadWritePaths=/srv/agents/%i
+# Espace commun de l'entreprise : dossiers clients (groupe arpagona-equipe) ; rien d'autre hors de la maison de l'agent.
+SupplementaryGroups=arpagona-equipe
+ReadWritePaths=/srv/agents/%i /srv/arpagona/clients
 # L'Hermès commun disparaît de la vue du service, sauf son code, ses outils et ses dépendances (lecture seule).
 # Ainsi les droits de traversée de /srv/hermes-arpagona/.hermes (remis à 0700 par Hermès à chaque démarrage)
 # ne peuvent pas casser un agent, et ses secrets et sa base ne sont même pas visibles.

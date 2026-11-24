@@ -37,7 +37,9 @@ class BridgeTest(unittest.TestCase):
                                                capture_output=True, text=True, timeout=25, check=False)
 
     def test_refus_champs_operations_et_injections(self):
-        bad = [('create', {'title': 'ok', 'assignee': 'agent'}),
+        bad = [('create', {'title': 'ok', 'assignee': 'Agent;id'}), ('create', {'title': 'ok', 'assignee': '--x'}),
+               ('create', {'title': 'ok', 'tenant': 'autre'}), ('assign', {'id': ID}), ('assign', {'id': ID, 'assignee': 'a b'}),
+               ('assign', {'id': ID, 'assignee': 'mael', 'x': 1}),
                ('create', {'title': 'x' * 201}), ('create', {'title': ' '}),
                ('create', {'title': 'a\x00b'}), ('dispatch', {}),
                ('list;id', {}), ('list', {'tenant': 'autre'}), ('list', []),
@@ -60,6 +62,13 @@ class BridgeTest(unittest.TestCase):
         args = bridge.arguments('create', {'title': 'Mission'})
         self.assertEqual(args, [bridge.CLI, 'kanban', 'create', '--body=', '--json', '--', 'Mission'])
 
+    def test_responsable_et_auteur_par_identifiant_de_compte(self):
+        args = bridge.arguments('create', {'title': 'Devis', 'assignee': 'mael', 'created_by': 'thibaud'})
+        self.assertEqual(args, [bridge.CLI, 'kanban', 'create', '--assignee=mael', '--created-by=thibaud',
+                                '--body=', '--json', '--', 'Devis'])
+        self.assertEqual(bridge.arguments('assign', {'id': ID, 'assignee': 'thibaud'}),
+                         [bridge.CLI, 'kanban', 'assign', '--', ID, 'thibaud'])
+
     def test_reponses_json_et_accuse_texte(self):
         for op, data in [('list', {}), ('show', {'id': ID}), ('create', {'title': 'Mission'})]:
             self.assertEqual(bridge.execute(op, data, Mock(return_value=subprocess.CompletedProcess([], 0, '{"id": "test"}'))), {'id': 'test'})
@@ -77,7 +86,7 @@ class BridgeTest(unittest.TestCase):
         try:
             cases = [(None, '/kanban/list', {}, 401), ('faux', '/kanban/list', {}, 401),
                      ('jeton-fictif', '/list', {}, 400),
-                     ('jeton-fictif', '/kanban/create', {'title': 'ok', 'assignee': 'agent'}, 400),
+                     ('jeton-fictif', '/kanban/create', {'title': 'ok', 'assignee': 'Agent;id'}, 400),
                      ('jeton-fictif', '/kanban/list', {}, 200)]
             for token, path, data, expected in cases:
                 conn = http.client.HTTPConnection('127.0.0.1', server.server_port)

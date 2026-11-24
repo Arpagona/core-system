@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Recette d'isolation des agents personnels sur le banc (à lancer en root sur la VM).
+"""Recette des deux zones sur le banc : espaces PERSONNELS privés, ENTREPRISE commune (à lancer en root sur la VM).
 
     sudo python3 /opt/arpagona/current/tests/e2e/isolation_agents.py [--live] [--json rapport.json]
 
-Preuves : permissions Unix réelles (sudo -u mael / agent-mael / agent-thibaud), jetons croisés refusés
-sur le moteur, la passerelle Kanban et le portier Hindsight, brouillon dans la seule boîte du bon
-utilisateur, Kanban et décisions filtrés par propriétaire. --live ajoute un vrai tour de conversation
-par le modèle (coût minime, données fictives). Aucune donnée réelle, aucun secret affiché.
+Zone personnelle (privée) : permissions Unix réelles (sudo -u mael / agent-mael / agent-thibaud), jetons croisés
+refusés sur le moteur et le portier Hindsight, brouillon dans la seule boîte du bon utilisateur, faits perso et
+secrets fictifs introuvables par l'autre (rappel, API, fichiers).
+Zone commune : fait métier d'équipe écrit par l'un et retrouvé par l'autre (avec auteur et source), dossiers clients
+créés et modifiés dans les deux sens (droits des nouveaux fichiers, traversées et liens refusés), un seul Kanban
+d'entreprise avec responsable par carte, décision visible mais approuvée par son seul responsable.
+--live ajoute deux vrais tours de modèle (outils d'équipe) : coût minime, données fictives. Les fixtures créées
+(faits, fichiers, cartes) sont retirées à la fin ; rien d'autre n'est supprimé. Aucune donnée réelle, aucun secret affiché.
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,8 +26,11 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
-USERS = {"mael": {"engine": 8652, "bridge": 8702, "gate": 18911},
-         "thibaud": {"engine": 8653, "bridge": 8703, "gate": 18912}}
+USERS = {"mael": {"engine": 8652, "gate": 18911}, "thibaud": {"engine": 8653, "gate": 18912}}
+TEAM_BANK = "arpagona-equipe"
+CLIENTS = "/srv/arpagona/clients"
+UPSTREAM = "http://127.0.0.1:18897"
+RUN = str(int(time.time()))  # fixtures uniques par exécution : la recette est rejouable
 RESULTS: list[dict] = []
 
 
@@ -105,7 +113,7 @@ def unix_isolation() -> None:
               denied(f"agent-{me}", "ls /srv/hermes-arpagona/.hermes"))
     # Modes des secrets.
     for who in USERS:
-        for name in (".env", "api_server_key", "arpagona_kanban_token", "arpagona_service_token", "hindsight_gate_token"):
+        for name in (".env", "api_server_key", "arpagona_service_token", "hindsight_gate_token"):
             st = os.stat(Path(home(who), ".hermes", name))
             check(f"{who}/{name} en 0600, propriété de agent-{who}",
                   oct(st.st_mode & 0o777) == "0o600" and st.st_uid == int(sh(None, f"id -u agent-{who}").stdout))
@@ -122,14 +130,15 @@ def network_isolation() -> None:
               http("POST", f"http://127.0.0.1:{theirs['engine']}/v1/runs", key, {"input": "x"})[0] == 401)
         check(f"moteur {other} refuse sans clé",
               http("POST", f"http://127.0.0.1:{theirs['engine']}/v1/runs", None, {"input": "x"})[0] == 401)
-        ktoken = secret(me, "arpagona_kanban_token")
-        status, _ = http("POST", f"http://127.0.0.1:{theirs['bridge']}/kanban/list", None, {},
-                         {"X-Arpagona-Service": ktoken})
-        check(f"passerelle Kanban {other} refuse le jeton de {me}", status == 401)
         gtoken = secret(me, "hindsight_gate_token")
         base = f"http://127.0.0.1:{own['gate']}"
         # 200 si la banque existe déjà, 404 si elle n'a encore rien reçu : dans les deux cas le portier a laissé passer.
         check(f"Hindsight : {me} atteint sa banque", http("GET", f"{base}/v1/default/banks/arpagona-{me}/stats", gtoken)[0] in (200, 404))
+        check(f"Hindsight : {me} lit la banque d'équipe", http("GET", f"{base}/v1/default/banks/{TEAM_BANK}/stats", gtoken)[0] in (200, 404))
+        for method, path in (("DELETE", f"/v1/default/banks/{TEAM_BANK}"), ("DELETE", f"/v1/default/banks/{TEAM_BANK}/memories"),
+                             ("PUT", f"/v1/default/banks/{TEAM_BANK}"), ("POST", f"/v1/default/banks/{TEAM_BANK}/reflect")):
+            check(f"Hindsight : {me} ne peut pas {method} {path.rsplit('/', 1)[-1]} sur la banque d'équipe",
+                  http(method, base + path, gtoken, {})[0] == 403)
         for path in (f"/v1/default/banks/arpagona-{other}/stats", "/v1/default/banks",
                      f"/v1/default/banks/arpagona-{me}/../arpagona-{other}/stats",
                      f"/v1/default/banks/arpagona-{me}%2f..%2farpagona-{other}/stats"):
@@ -207,6 +216,7 @@ def api_isolation(live: bool) -> None:
     env = ("ARPAGONA_DB=/tmp/isolation-api/arpagona.db ARPAGONA_PORT=8790 ARPAGONA_BIND=127.0.0.1 "
            "ARPAGONA_HERMES_KEY_FILE=/etc/arpagona-api/hermes_key ARPAGONA_SERVICE_TOKEN_FILE=/etc/arpagona-api/service_token "
            "ARPAGONA_AGENTS_FILE=/etc/arpagona-api/agents.json ARPAGONA_TRIGGER_INTERVAL=100000 "
+           "ARPAGONA_KANBAN_TOKEN_FILE=/etc/arpagona-api/kanban_token "
            "ARPAGONA_STATIC_DIR=/opt/arpagona/current/apps/mission-control-web")
     server = subprocess.Popen(["sudo", "-n", "-u", "arpagona-api", "bash", "-c",
                                f"cd /opt/arpagona/current/services/arpagona-api && {env} exec python3 -m arpagona_api.server"],
@@ -237,37 +247,59 @@ def api_isolation(live: bool) -> None:
 
         for login, password in pw.items():
             check(f"connexion MC {login}", call(login, "POST", "/api/login", {"login": login, "password": password})[0] == 200)
-        titles = {}
+        # --- Kanban d'entreprise : un seul tableau, responsable par carte, décision au seul responsable ---
+        lists = {}
         for login in pw:
             status, raw = call(login, "GET", "/api/kanban/list")
-            titles[login] = [c.get("title", "") for c in json.loads(raw)] if status == 200 else None
-            check(f"Kanban MC de {login} lisible", status == 200)
+            lists[login] = json.loads(raw) if status == 200 else None
+            check(f"Kanban d'entreprise lisible par {login}", status == 200)
+        ids = {login: sorted(c["id"] for c in (lists[login] or [])) for login in pw}
+        check("même tableau pour les deux comptes (mêmes cartes)", ids["mael"] == ids["thibaud"] and len(ids["mael"]) > 0,
+              f"{len(ids['mael'])} carte(s)")
+        check("aucun doublon de carte (identifiants uniques)", len(ids["mael"]) == len(set(ids["mael"])))
+        titles_all = [c.get("title", "") for c in lists["mael"] or []]
         for me, other in (("mael", "thibaud"), ("thibaud", "mael")):
-            mine, theirs = titles[me] or [], titles[other] or []
-            check(f"Kanban de {me} : ses cartes seulement",
-                  any(f"[{me.upper()}]" in t for t in mine) and not any(f"[{other.upper()}]" in t for t in mine), str(mine)[:140])
-        # Décisions : cartes bloquées routées vers le bon compte.
+            check(f"cartes de {me} et de {other} visibles des deux", any(f"[{me.upper()}]" in t for t in titles_all)
+                  and any(f"[{other.upper()}]" in t for t in titles_all))
+            status, raw = call(me, "GET", "/api/kanban/list?scope=mine")
+            mine = json.loads(raw) if status == 200 else []
+            check(f"« mes cartes » de {me} : seulement ses cartes", bool(mine) and all(c.get("assignee") == me for c in mine), f"{len(mine)} carte(s)")
+            check(f"« toutes » cohérent : cartes de {me} = « mes cartes »", sorted(c["id"] for c in mine) ==
+                  sorted(c["id"] for c in lists[me] if c.get("assignee") == me))
+        demo = [c for c in lists["mael"] if "[DEMO]" in c.get("title", "")]
+        check("cartes existantes de démonstration préservées (sans responsable)", len(demo) >= 1 and all(not c.get("assignee") for c in demo), f"{len(demo)} carte(s)")
+        # Décisions : visibles de l'autre, mais seul le responsable décide.
+        created: list[str] = []
         for me, other in (("mael", "thibaud"), ("thibaud", "mael")):
-            status, raw = call(me, "GET", "/api/kanban/list")
-            blocked = [c for c in json.loads(raw) if c.get("status") == "blocked"]
-            ok = blocked and all(f"{me.upper()}-4417" in json.dumps(c, ensure_ascii=False) for c in blocked) \
-                and not any(f"{other.upper()}-4417" in json.dumps(c, ensure_ascii=False) for c in blocked)
-            check(f"décision en attente routée vers {me} seulement", bool(ok), f"{len(blocked)} carte(s) bloquée(s)")
-        # Carte créée par Maël : seulement dans le Kanban de Maël.
-        card = f"[MAEL] carte de recette {int(time.time())}"
-        check("création de carte par mael", call("mael", "POST", "/api/kanban/create", {"title": card})[0] == 200)
-        _, raw_t = call("thibaud", "GET", "/api/kanban/list")
-        _, raw_m = call("mael", "GET", "/api/kanban/list")
-        check("carte créée par mael visible chez mael seulement", card in raw_m and card not in raw_t)
-        # Carte de l'autre : identifiants inconnus, refus.
-        other_id = next((c["id"] for c in json.loads(raw_t) if "THIBAUD" in c.get("title", "")), "")
-        status, _ = call("mael", "POST", "/api/kanban/comment", {"id": other_id, "text": "intrusion"})
-        check("mael ne commente pas une carte de thibaud", status in (400, 502) and other_id != "", f"HTTP {status}")
-        status, _ = call("mael", "POST", "/api/kanban/complete", {"id": other_id})
-        check("mael ne termine pas une carte de thibaud", status in (400, 502), f"HTTP {status}")
-        _, raw_t2 = call("thibaud", "GET", "/api/kanban/list")
-        check("la carte de thibaud est intacte", "intrusion" not in raw_t2 and
-              any(c["id"] == other_id and c.get("status") != "done" for c in json.loads(raw_t2)))
+            title = f"[{me.upper()}] RECETTE-{RUN} décision à valider"
+            status, raw = call(me, "POST", "/api/kanban/create", {"title": title, "body": "Décision fictive de recette."})
+            card = json.loads(raw) if status == 200 else {}
+            created.append(card.get("id", ""))
+            check(f"{me} crée une carte : responsable = {me}, auteur = {me}",
+                  status == 200 and card.get("assignee") == me and card.get("created_by") == me, f"HTTP {status}")
+            call(me, "POST", "/api/kanban/block", {"id": card.get("id", ""), "text": "Décision attendue"})
+            seen = [c for c in json.loads(call(other, "GET", "/api/kanban/list")[1]) if c["id"] == card.get("id")]
+            check(f"décision de {me} visible de {other}", len(seen) == 1 and seen[0].get("assignee") == me and seen[0].get("mine") is False)
+            for op in ("unblock", "complete", "archive"):
+                status, _ = call(other, "POST", f"/api/kanban/{op}", {"id": card.get("id", "")})
+                check(f"{other} ne peut pas « {op} » la décision de {me}", status == 403, f"HTTP {status}")
+            status, _ = call(other, "POST", "/api/kanban/assign", {"id": card.get("id", ""), "assignee": other})
+            check(f"{other} ne peut pas se réaffecter la décision de {me}", status == 403, f"HTTP {status}")
+            status, _ = call(other, "POST", "/api/kanban/comment", {"id": card.get("id", ""), "text": f"avis de {other} (recette)"})
+            check(f"{other} peut commenter la décision de {me} (visibilité commune)", status == 200, f"HTTP {status}")
+            _, shown = call(me, "GET", f"/api/kanban/show?id={card.get('id', '')}")
+            check(f"la décision de {me} est toujours bloquée et à {me}", json.loads(shown).get("task", {}).get("status") == "blocked"
+                  if shown.startswith("{") else False)
+            status, _ = call(me, "POST", "/api/kanban/unblock", {"id": card.get("id", "")})
+            check(f"{me} (responsable) approuve sa décision", status == 200, f"HTTP {status}")
+        status, _ = call("mael", "POST", "/api/kanban/create", {"title": f"RECETTE-{RUN} intrus", "assignee": "inconnu"})
+        check("responsable hors équipe refusé", status == 400, f"HTTP {status}")
+        for card_id in created:  # nettoyage : seulement les cartes de la recette (archivées par leur responsable)
+            owner = next((c["assignee"] for c in json.loads(call("mael", "GET", "/api/kanban/list")[1]) if c["id"] == card_id), "")
+            if owner:
+                call(owner, "POST", "/api/kanban/archive", {"id": card_id})
+        after = sorted(c["id"] for c in json.loads(call("mael", "GET", "/api/kanban/list")[1]))
+        check("après nettoyage : tableau identique à l'état initial (aucune carte existante perdue)", after == ids["mael"], f"{len(after)} carte(s)")
         # Jeton d'outils de l'un, session de l'autre.
         stoken = secret("thibaud", "arpagona_service_token")
         import sqlite3
@@ -296,6 +328,164 @@ def api_isolation(live: bool) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def plugin_call(who: str, func: str, args: dict, umask: str = "077") -> dict:
+    """Appelle un outil du plugin arpagona-equipe sous le compte Unix de l'agent, avec l'environnement de son service."""
+    code = (
+        "import importlib.util,json,sys;"
+        "s=importlib.util.spec_from_file_location('e','/opt/arpagona/current/plugins/arpagona-equipe/__init__.py');"
+        "m=importlib.util.module_from_spec(s);s.loader.exec_module(m);"
+        f"print(getattr(m,'{func}')(json.loads(sys.argv[1])))")
+    env = f"set -a; . {home(who)}/.hermes/.env; set +a; umask {umask}; python3 -c {shlex.quote(code)} {shlex.quote(json.dumps(args))}"
+    out = sh(f"agent-{who}", env, timeout=240)
+    try:
+        return json.loads(out.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"error": "sortie illisible : " + (out.stderr or out.stdout)[:160]}
+
+
+def upstream_key() -> str:
+    return Path("/etc/hindsight-gate/upstream_key").read_text().strip()
+
+
+def team_memory() -> None:
+    """Mémoire d'équipe : écrite par l'un, retrouvée par l'autre (avec auteur et source) ; perso et secrets étanches."""
+    facts = {"mael": f"Le client fictif ZORBA-{RUN} exige une livraison par lots de 50 pièces (recette deux zones).",
+             "thibaud": f"Le client fictif QUILLON-{RUN} a validé le devis 2026-{RUN[-4:]} sous réserve d'un contrôle dimensionnel."}
+    doc_ids = {who: f"recette-equipe-{who}-{RUN}" for who in USERS}
+    personal = {"mael": f"PERSO-MAEL-{RUN}: Maël préfère les réponses en liste courte.",
+                "thibaud": f"PERSO-THIBAUD-{RUN}: Thibaud lit ses mails le matin seulement."}
+    secrets_ = {"mael": f"CANARI-SECRET-MAEL-{RUN}", "thibaud": f"CANARI-SECRET-THIBAUD-{RUN}"}
+    personal_docs = {who: f"recette-perso-{who}-{RUN}" for who in USERS}
+    try:
+        for who in USERS:
+            out = plugin_call(who, "team_remember", {"fait": facts[who], "source": f"recette deux zones {RUN}", "id": doc_ids[who]})
+            check(f"{who} écrit un fait métier dans la mémoire d'équipe", out.get("zone") == "equipe", str(out)[:140])
+        for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
+            key = "ZORBA" if who == "mael" else "QUILLON"
+            out = plugin_call(other, "team_recall", {"requete": f"client {key}-{RUN} exigences"})
+            hits = [r for r in out.get("resultats", []) if f"{key}-{RUN}" in r.get("fait", "")]
+            check(f"{other} retrouve depuis sa session le fait métier écrit par {who}", len(hits) >= 1, str(out)[:140])
+            if hits:
+                check(f"auteur et source conservés pour le fait de {who}",
+                      hits[0].get("auteur") == who and RUN in hits[0].get("source", ""), f"auteur={hits[0].get('auteur')!r} source={hits[0].get('source')!r}")
+        # Fait personnel et secret fictifs : déposés dans la banque PERSONNELLE de chacun, via son portier.
+        for who in USERS:
+            base = f"http://127.0.0.1:{USERS[who]['gate']}/v1/default/banks/arpagona-{who}/memories"
+            for content, doc in ((personal[who], personal_docs[who]), (f"Mot de passe fictif du compte de {who} : {secrets_[who]}", personal_docs[who] + "-secret")):
+                status, _ = http("POST", base, secret(who, "hindsight_gate_token"), {"items": [{"content": content, "document_id": doc}], "async": False})
+                check(f"{who} écrit dans SA mémoire personnelle ({'secret' if 'secret' in doc else 'préférence'} fictif)", status == 200, f"HTTP {status}")
+            out = plugin_call(who, "team_remember", {"fait": f"Mot de passe fictif {secrets_[who]}", "source": "recette"})
+            check(f"{who} ne verse pas un secret dans la mémoire d'équipe (refusé par le portier)", "error" in out, str(out)[:100])
+            mail = "From: client-fictif@exemple.invalid\nTo: x@banc.invalid\nSubject: Devis\n\nBonjour"
+            out = plugin_call(who, "team_remember", {"fait": mail, "source": "recette"})
+            check(f"{who} ne verse pas un mail entier dans la mémoire d'équipe", "error" in out, str(out)[:100])
+        for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
+            gate_other = f"http://127.0.0.1:{USERS[other]['gate']}"
+            tok = secret(other, "hindsight_gate_token")
+            for canary in (personal[who].split(":")[0], secrets_[who]):
+                # 1. Rappel d'équipe (ce que l'autre peut interroger) : jamais le perso ni le secret.
+                out = plugin_call(other, "team_recall", {"requete": canary})
+                check(f"{other} ne retrouve pas {canary[:22]}… de {who} dans la mémoire d'équipe", canary not in json.dumps(out, ensure_ascii=False), str(out)[:80])
+                # 2. Demande explicite à l'API Hindsight sur la banque de l'autre : refusée par le portier.
+                for method, path, body in (("POST", f"/v1/default/banks/arpagona-{who}/memories/recall", {"query": canary}),
+                                           ("GET", f"/v1/default/banks/arpagona-{who}/memories/list", None),
+                                           ("GET", "/v1/default/banks", None)):
+                    status, raw = http(method, gate_other + path, tok, body)
+                    check(f"{other} : API {method} {path.split('/banks')[-1] or '/'} refusée pour la banque de {who}", status == 403 and canary not in raw, f"HTTP {status}")
+                # 3. Même demande dans SA propre banque : le fait de l'autre n'y est pas.
+                status, raw = http("POST", f"{gate_other}/v1/default/banks/arpagona-{other}/memories/recall", tok, {"query": canary})
+                check(f"{other} ne retrouve pas {canary[:22]}… de {who} dans sa propre banque", status == 200 and canary not in raw, f"HTTP {status}")
+            status, raw = http("POST", f"{gate_other}/v1/default/banks/{TEAM_BANK}/memories/recall", tok, {"query": secrets_[who]})
+            check(f"API équipe : le secret de {who} introuvable par {other}", status == 200 and secrets_[who] not in raw, f"HTTP {status}")
+    finally:
+        # Nettoyage des seules fixtures de la recette (documents par identifiant), avec la clé du portier côté root.
+        key = upstream_key()
+        removed = 0
+        for bank, docs in ((TEAM_BANK, list(doc_ids.values())), *((f"arpagona-{w}", [personal_docs[w], personal_docs[w] + "-secret"]) for w in USERS)):
+            for doc in docs:
+                status, _ = http("DELETE", f"{UPSTREAM}/v1/default/banks/{bank}/documents/{doc}", key)
+                removed += status in (200, 202, 204)
+        check("fixtures de mémoire retirées (par identifiant de document, aucune autre donnée touchée)", removed >= 1, f"{removed} document(s)")
+
+
+def team_files() -> None:
+    """Dossiers clients : création et modification croisées, droits des nouveaux fichiers, traversées et liens refusés."""
+    check("espace commun : dossier en setgid, groupe arpagona-equipe, fermé aux autres",
+          oct(os.stat(CLIENTS).st_mode & 0o7777) == "0o2770" and sh(None, f"stat -c %G {CLIENTS}").stdout.strip() == "arpagona-equipe")
+    base = f"recette-{RUN}"
+    rel = {who: f"{base}/fiche-{who}.md" for who in USERS}
+    try:
+        for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
+            out = plugin_call(who, "clients_write", {"chemin": rel[who], "contenu": f"Fiche client fictive créée par {who}\n"})
+            check(f"{who} crée un fichier client dans l'espace commun", out.get("ecrit", 0) > 0, str(out)[:100])
+            mode = oct(os.stat(f"{CLIENTS}/{rel[who]}").st_mode & 0o777)
+            grp = sh(None, f"stat -c %G {CLIENTS}/{rel[who]}").stdout.strip()
+            check(f"fichier de {who} : 0660, groupe d'équipe (créé avec un umask 077)", mode == "0o660" and grp == "arpagona-equipe", f"{mode} {grp}")
+            dmode = oct(os.stat(f"{CLIENTS}/{base}").st_mode & 0o7777)
+            check("dossier créé : setgid, rwx pour le groupe", dmode == "0o2770", dmode)
+            out = plugin_call(other, "clients_read", {"chemin": rel[who]})
+            check(f"{other} lit le fichier client de {who}", f"créée par {who}" in out.get("contenu", ""), str(out)[:100])
+            out = plugin_call(other, "clients_write", {"chemin": rel[who], "contenu": f"Modifié par {other}\n", "ajouter": True})
+            check(f"{other} modifie le fichier client de {who}", out.get("ecrit", 0) > 0, str(out)[:100])
+            text = Path(f"{CLIENTS}/{rel[who]}").read_text()
+            check(f"relecture : le fichier de {who} contient la modification de {other}", f"Modifié par {other}" in text and f"créée par {who}" in text)
+        listing = plugin_call("mael", "clients_list", {"chemin": base})
+        check("les deux fichiers sont listés pour les deux agents", len(listing.get("entrees", [])) == 2, str(listing)[:100])
+        if sh(None, "id mael").returncode == 0:
+            check("humain habilité (mael) lit un fichier client", sh("mael", f"cat {CLIENTS}/{rel['thibaud']}").returncode == 0)
+            check("humain habilité (mael) modifie un fichier client", sh("mael", f"echo 'ligne humaine' >> {CLIENTS}/{rel['thibaud']}").returncode == 0)
+            check("l'agent relit la modification de l'humain", "ligne humaine" in plugin_call("thibaud", "clients_read", {"chemin": rel["thibaud"]}).get("contenu", ""))
+            sh("mael", f"touch {CLIENTS}/{base}/note-humaine.md")
+            check("fichier créé par un humain : groupe d'équipe via ACL par défaut, agent peut le modifier",
+                  plugin_call("mael", "clients_write", {"chemin": f"{base}/note-humaine.md", "contenu": "x"}).get("ecrit", 0) > 0)
+        check("compte tiers (nobody) : aucun accès à l'espace commun", denied("nobody", f"ls {CLIENTS}"))
+        # Traversées et liens : refusés par l'outil ET par les droits Unix.
+        for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
+            for bad in (f"../../agents/{other}/.hermes/.env", f"/srv/agents/{other}/.hermes/.env", f"{base}/../../agents/{other}/mail"):
+                check(f"{who} : outil clients refuse « {bad[:40]} »", "error" in plugin_call(who, "clients_read", {"chemin": bad}))
+            sh(f"agent-{who}", f"ln -s {home(other)}/.hermes/.env {CLIENTS}/{base}/piege-{who}; ln -s {home(other)} {CLIENTS}/{base}/dossier-piege-{who}")
+            check(f"{other} : lien symbolique de {who} vers un fichier privé refusé par l'outil", "error" in plugin_call(other, "clients_read", {"chemin": f"{base}/piege-{who}"}))
+            check(f"{other} : lien symbolique vers un dossier privé refusé (lecture et écriture)",
+                  "error" in plugin_call(other, "clients_read", {"chemin": f"{base}/dossier-piege-{who}/.hermes/.env"})
+                  and "error" in plugin_call(other, "clients_write", {"chemin": f"{base}/dossier-piege-{who}/intrus.txt", "contenu": "x"}))
+            check(f"{other} : le lien ne donne pas non plus accès par les droits Unix", denied(f"agent-{other}", f"cat {CLIENTS}/{base}/piege-{who}"))
+        check("aucun fichier créé chez l'autre par les tentatives d'écriture", not Path(home("thibaud"), "intrus.txt").exists() and not Path(home("mael"), "intrus.txt").exists())
+        for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
+            check(f"agent-{who} : l'espace commun ne rouvre pas les dossiers privés de {other}",
+                  denied(f"agent-{who}", f"ls {home(other)}/mail") and denied(f"agent-{who}", f"cat {home(other)}/.hermes/.env"))
+    finally:
+        shutil.rmtree(f"{CLIENTS}/{base}", ignore_errors=True)
+        check("fixtures de dossiers clients retirées", not Path(f"{CLIENTS}/{base}").exists())
+
+
+def live_zones() -> None:
+    """Deux vrais tours de modèle : les outils d'équipe sont bien câblés dans l'agent réel (coût minime)."""
+    fact = f"Le client fictif LIVE-{RUN} paie à 45 jours."
+    key = secret("mael", "api_server_key")
+    sid = f"zones-{RUN}"
+    prompt = (f"Avec arpagona_equipe_memoire_ecrire, enregistre ce fait métier d'équipe avec source « recette live » et id « recette-live-{RUN} » : {fact} "
+              f"Puis avec arpagona_clients_ecrire écris le fichier recette-live-{RUN}/note.md contenant « paiement 45 jours ». Réponds OK.")
+    status, raw = http("POST", f"http://127.0.0.1:{USERS['mael']['engine']}/v1/runs", key, {"input": prompt, "session_id": sid}, {"Idempotency-Key": sid})
+    run = json.loads(raw)["run_id"] if status == 202 else ""
+    state = ""
+    for _ in range(45):
+        time.sleep(4)
+        st, body = http("GET", f"http://127.0.0.1:{USERS['mael']['engine']}/v1/runs/{run}", key)
+        state = json.loads(body).get("status", "") if st == 200 else ""
+        if state in ("completed", "failed", "cancelled"):
+            break
+    check("run réel : l'agent de Maël utilise les outils d'équipe", state == "completed", state)
+    note = Path(f"{CLIENTS}/recette-live-{RUN}/note.md")
+    check("run réel : fichier client créé par l'agent de Maël, lisible par l'agent de Thibaud",
+          note.exists() and "45 jours" in plugin_call("thibaud", "clients_read", {"chemin": f"recette-live-{RUN}/note.md"}).get("contenu", ""))
+    out = plugin_call("thibaud", "team_recall", {"requete": f"LIVE-{RUN} délai de paiement"})
+    hits = [r for r in out.get("resultats", []) if f"LIVE-{RUN}" in r.get("fait", "")]
+    check("run réel : Thibaud retrouve le fait enregistré par l'agent de Maël (auteur mael)", bool(hits) and hits[0].get("auteur") == "mael", str(out)[:120])
+    shutil.rmtree(f"{CLIENTS}/recette-live-{RUN}", ignore_errors=True)
+    status, _ = http("DELETE", f"{UPSTREAM}/v1/default/banks/{TEAM_BANK}/documents/recette-live-{RUN}", upstream_key())
+    check("fixtures du tour réel retirées", status in (200, 202, 204) and not note.exists(), f"HTTP {status}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true", help="inclut un vrai tour de modèle")
@@ -309,7 +499,11 @@ def main() -> None:
     unix_isolation()
     network_isolation()
     mail_isolation(args.live)
+    team_memory()
+    team_files()
     api_isolation(args.live)
+    if args.live:
+        live_zones()
     failed = [r for r in RESULTS if not r["ok"]]
     print(f"\n{len(RESULTS) - len(failed)}/{len(RESULTS)} contrôles réussis")
     if args.json:
