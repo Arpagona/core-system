@@ -10,7 +10,7 @@ Chaque utilisateur du banc (`mael`, `thibaud`) a **son** agent. L'isolation tien
 | Élément | Par utilisateur | Commun (lecture seule) |
 | --- | --- | --- |
 | Compte Unix | `agent-mael`, `agent-thibaud` (système, sans shell, sans sudo), maison `/srv/agents/<login>` en `0700` | — |
-| Hermès | `HERMES_HOME=/srv/agents/<login>/.hermes` : config, `SOUL.md`, `state.db`, sessions, cron, **Kanban (`kanban.db`)**, skills personnels | Code, outils et dépendances de Hermès v0.23.1 (ACL du groupe `hermes-core`, lecture seule) |
+| Hermès | `HERMES_HOME=/srv/agents/<login>/.hermes` : config, `SOUL.md`, `state.db`, sessions, cron, **Kanban (`kanban.db`)**, skills personnels | Code, outils et dépendances de Hermès v0.23.1 : montés **en lecture seule** dans chaque service ; le reste de l'Hermès commun n'est pas visible |
 | Moteur | `arpagona-agent@<login>.service`, API sur `127.0.0.1:8652` (mael) / `8653` (thibaud), **clé propre** | — |
 | Mémoire | banque Hindsight `arpagona-<login>`, derrière le **portier** `hindsight-gate` (jeton propre, une banque par jeton) | Service Hindsight |
 | Kanban | `arpagona-kanban-bridge@<login>.service`, port `8702` / `8703`, jeton propre, base propre | Code de la passerelle |
@@ -49,9 +49,9 @@ sudo python3 /opt/arpagona/current/tests/e2e/isolation_agents.py --live --json /
 
 Ajouter un utilisateur : ajouter une ligne à `AGENTS` dans `agents-perso.sh` (login, nom, trois ports libres), créer son compte MC avec `arpagona_api.manage add-user`, relancer `install`.
 
-## Preuves (24/11/2026, VM, release `d0dfe3730e7e` + correctifs de recette)
+## Preuves (24/11/2026, VM, release `fee0f0fa91e8`)
 
-`isolation_agents.py --live` : contrôles réels, tous réussis. Ils couvrent :
+`isolation_agents.py --live` : 110 contrôles réels, 110 réussis. Ils couvrent :
 
 1. **Fichiers** : `agent-mael` ne lit ni n'écrit rien chez `agent-thibaud` (`.env`, config, `kanban.db`, `state.db`, config Hindsight, jeton, skills, boîte mail) et inversement. Le compte humain `mael` (sans sudo) n'accède ni à l'un ni à l'autre.
 2. **Socle** : chaque agent lit le code partagé de Hermès, ne peut ni l'écrire ni écrire les plugins partagés, ne lit pas l'Hermès commun, `/etc/arpagona-api`, `/etc/hindsight-gate`, la base de l'API.
@@ -78,4 +78,5 @@ Les tests unitaires (CI) : `services/arpagona-api/tests/test_agents_isolation.py
 5. **Moteur commun `hermes-arpagona` conservé** (il porte le code et l'environnement partagés) ; l'API ne l'utilise plus tant que le registre est actif. Le compte `dupont` n'a plus d'agent.
 6. **Outils des agents** : liste permise `web`, `todo`, `arpagona` (dont les outils mail). Pas de terminal, pas de mémoire native ; la mémoire passe par Hindsight.
 7. **Boîtes fictives** : le plugin lit et écrit un Maildir local. Brancher de vraies boîtes demande des identifiants par utilisateur et un accord de Thibaud.
-8. **ACL** : deux ACL de traversée sur `/srv/hermes-arpagona` et `.hermes` plus des ACL de lecture sur `hermes-agent`, `tools`, `installs`. Un `hermes update` de l'instance commune devra garder ces ACL (`agents-perso.sh install` les repose).
+8. **ACL** : le groupe `hermes-core` a une traversée sur `/srv/hermes-arpagona` et `.hermes`, et la lecture de `hermes-agent`, `tools`, `installs`. Hermès remet `.hermes` à `0700` à chaque démarrage de l'instance commune, ce qui annule la traversée (masque ACL). Les services agents n'en dépendent pas (montage en lecture seule, essai fait : masque cassé volontairement, agents et passerelles redémarrent et répondent). Les commandes d'administration hors service (`hermes kanban …` en `sudo -u agent-<login>`) demandent d'abord `agents-perso.sh acl`.
+9. **Lancement à froid de la recette** : `isolation_agents.py` rejoue `agents-perso.sh acl` au début pour la même raison.
