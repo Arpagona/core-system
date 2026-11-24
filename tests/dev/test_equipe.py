@@ -54,17 +54,35 @@ class ClientsTest(unittest.TestCase):
         self.assertEqual(names, ["fiche.md"])
 
     def test_fichier_d_un_collegue_modifiable_sans_etre_proprietaire(self):
-        """Simule un fichier dont on n'est pas propriétaire : la modification ne doit pas échouer sur fchmod."""
+        """Un fichier existant n'est jamais chmodé : un collègue qui n'en est pas propriétaire peut le modifier."""
         self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="x")
-        real_geteuid = os.geteuid
-        self.eq.os.geteuid = lambda: real_geteuid() + 1  # le « collègue » n'est pas propriétaire
-        try:
-            os.chmod(self.clients / "a" / "fiche.md", 0o640)  # mode différent : l'ancien code appelait fchmod
-            out = self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="y", ajouter=True)
-        finally:
-            self.eq.os.geteuid = real_geteuid
+        os.chmod(self.clients / "a" / "fiche.md", 0o640)
+        out = self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="y", ajouter=True)
         self.assertEqual(out.get("ecrit"), 1, out)
         self.assertEqual((self.clients / "a" / "fiche.md").read_text(encoding="utf-8"), "xy")
+        self.assertEqual(stat.S_IMODE((self.clients / "a" / "fiche.md").stat().st_mode), 0o640)  # droits d'un existant inchangés
+        out = self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="z")
+        self.assertEqual((self.clients / "a" / "fiche.md").read_text(encoding="utf-8"), "z")
+
+    def test_lien_physique_vers_un_fichier_prive_refuse_sans_changer_ses_droits(self):
+        prive = self.private / "secret.txt"
+        os.chmod(prive, 0o600)
+        os.link(prive, self.clients / "lien-dur.txt")
+        out = self.call(self.eq.clients_write, chemin="lien-dur.txt", contenu="ECRASE")
+        self.assertIn("error", out)
+        self.assertEqual(prive.read_text(encoding="utf-8"), "CANARI-PRIVE")
+        self.assertEqual(stat.S_IMODE(prive.stat().st_mode), 0o600)  # jamais élargi
+
+    def test_dossier_remplace_par_un_lien_entre_deux_appels(self):
+        """Résolution par descripteurs : un dossier devenu lien symbolique est refusé à l'ouverture."""
+        self.call(self.eq.clients_write, chemin="d/f.md", contenu="ok")
+        (self.clients / "d" / "f.md").unlink()
+        (self.clients / "d").rmdir()
+        (self.clients / "d").symlink_to(self.private)
+        self.assertIn("error", self.call(self.eq.clients_read, chemin="d/secret.txt"))
+        self.assertIn("error", self.call(self.eq.clients_write, chemin="d/nouveau.txt", contenu="x"))
+        self.assertIn("error", self.call(self.eq.clients_list, chemin="d"))
+        self.assertFalse((self.private / "nouveau.txt").exists())
 
     def test_traversees_refusees(self):
         for bad in ("../prive-mael/secret.txt", "/etc/passwd", "dupont/../../prive-mael/secret.txt",

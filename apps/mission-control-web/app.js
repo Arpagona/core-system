@@ -309,7 +309,17 @@ async function openCard(id) {
     $("comments").replaceChildren(...(result.comments || task.comments || []).map(c => node("p", (c.author || "Équipe") + " · " + (c.body || c.text || c.content || ""))));
     $("card-actions").replaceChildren();
     const canDecide = task.can_decide !== false;
-    if (!canDecide) $("detail-meta").textContent += " · décision réservée à " + task.assignee;
+    if (!canDecide) $("detail-meta").textContent += task.assignee ? " · décision réservée à " + task.assignee : " · sans responsable : affectez-la avant toute décision";
+    if (!task.assignee) {
+      const claim = node("button", "Me l'affecter", "btn");
+      claim.addEventListener("click", async () => {
+        claim.disabled = true;
+        try { await kanban("assign", {id, assignee: meUser.login}); await openCard(id); await loadKanban(); }
+        catch(err) { $("card-error").textContent = err.message; }
+        finally { claim.disabled = false; }
+      });
+      $("card-actions").append(claim);
+    }
     for(const [op, label] of canDecide ? [["complete","Terminer"],[task.status === "blocked" ? "unblock" : "block",task.status === "blocked" ? "Débloquer" : "Bloquer"],["archive","Archiver"]] : []) {
       const b = node("button", label, "btn ghost");
       b.addEventListener("click", async () => {

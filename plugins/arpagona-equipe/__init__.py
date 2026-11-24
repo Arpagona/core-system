@@ -37,54 +37,65 @@ def _root() -> Path:
     return Path(raw)
 
 
-def safe_path(rel: str, *, must_exist: bool) -> Path:
-    """Chemin sûr sous la racine : relatif, sans « .. », sans lien symbolique, sans nom étrange."""
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+
+def split_path(rel: str) -> list[str]:
+    """Composants sûrs d'un chemin relatif : sans « .. », sans nom caché ni caractère étrange."""
     if not isinstance(rel, str) or "\x00" in rel or rel.startswith("/") or "\\" in rel:
         raise EquipeError("chemin invalide : relatif, sans « \\ »")
     parts = [p for p in rel.split("/") if p not in ("", ".")]
     for part in parts:
         if part == ".." or not NAME_RE.match(part) or part.startswith("."):
             raise EquipeError(f"nom de chemin refusé : {part!r}")
-    root = _root()
-    if root.is_symlink() or not root.is_dir():
-        raise EquipeError("racine des dossiers clients invalide")
-    current = root
-    for part in parts:
-        current = current / part
-        try:
-            mode = os.lstat(current).st_mode
-        except FileNotFoundError:
-            if must_exist:
-                raise EquipeError("introuvable") from None
-            continue
-        if stat.S_ISLNK(mode):
-            raise EquipeError("lien symbolique refusé")
-    return current
+    return parts
 
 
-def _ensure_dirs(path: Path) -> None:
-    root = _root()
-    missing = []
-    probe = path
-    while probe != root and not probe.exists():
-        missing.append(probe)
-        probe = probe.parent
-    for directory in reversed(missing):
-        directory.mkdir(mode=0o2770)
-        os.chmod(directory, 0o2770)  # le masque du processus ne doit pas fermer le groupe
+def open_dir(parts: list[str], *, create: bool = False) -> int:
+    """Descripteur du dossier visé, résolu composant par composant SANS suivre aucun lien symbolique.
+
+    Chaque étape s'ouvre relativement au descripteur de l'étape précédente (openat + O_NOFOLLOW) : un lien
+    posé ou échangé pendant l'opération ne peut pas faire sortir de la racine (pas de fenêtre entre test et ouverture).
+    """
+    try:
+        fd = os.open(_root(), DIR_FLAGS)
+    except OSError as exc:
+        raise EquipeError("racine des dossiers clients invalide ou lien symbolique refusé") from exc
+    try:
+        for part in parts:
+            try:
+                nxt = os.open(part, DIR_FLAGS, dir_fd=fd)
+            except FileNotFoundError:
+                if not create:
+                    raise EquipeError("introuvable") from None
+                os.mkdir(part, 0o2770, dir_fd=fd)
+                nxt = os.open(part, DIR_FLAGS, dir_fd=fd)
+                os.fchmod(nxt, 0o2770)  # le masque du processus ne doit pas fermer le groupe d'équipe
+            except OSError as exc:
+                raise EquipeError("lien symbolique ou élément qui n'est pas un dossier : refusé") from exc
+            os.close(fd)
+            fd = nxt
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
 def clients_list(args: dict, **_kw) -> str:
     try:
-        target = safe_path(str(args.get("chemin", "")), must_exist=True)
-        if not target.is_dir():
-            raise EquipeError("ce n'est pas un dossier")
-        rows = []
-        for entry in sorted(target.iterdir(), key=lambda p: p.name)[:MAX_LIST]:
-            if entry.name.startswith(".") or entry.is_symlink():
-                continue
-            rows.append({"nom": entry.name, "type": "dossier" if entry.is_dir() else "fichier",
-                         "taille": entry.stat().st_size if entry.is_file() else None})
+        parts = split_path(str(args.get("chemin", "")))
+        fd = open_dir(parts)
+        try:
+            rows = []
+            with os.scandir(fd) as entries:
+                for entry in sorted(entries, key=lambda e: e.name)[:MAX_LIST]:
+                    if entry.name.startswith(".") or entry.is_symlink():
+                        continue
+                    is_dir = entry.is_dir(follow_symlinks=False)
+                    rows.append({"nom": entry.name, "type": "dossier" if is_dir else "fichier",
+                                 "taille": None if is_dir else entry.stat(follow_symlinks=False).st_size})
+        finally:
+            os.close(fd)
         return json.dumps({"chemin": str(args.get("chemin", "")) or "/", "entrees": rows}, ensure_ascii=False)
     except (EquipeError, OSError) as exc:
         return json.dumps({"error": str(exc)}, ensure_ascii=False)
@@ -92,8 +103,18 @@ def clients_list(args: dict, **_kw) -> str:
 
 def clients_read(args: dict, **_kw) -> str:
     try:
-        target = safe_path(str(args.get("chemin", "")), must_exist=True)
-        fd = os.open(target, os.O_RDONLY | os.O_NOFOLLOW)
+        parts = split_path(str(args.get("chemin", "")))
+        if not parts:
+            raise EquipeError("chemin de fichier requis")
+        parent = open_dir(parts[:-1])
+        try:
+            fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK, dir_fd=parent)
+        except FileNotFoundError:
+            raise EquipeError("introuvable") from None
+        except OSError as exc:
+            raise EquipeError("lien symbolique ou fichier illisible : refusé") from exc
+        finally:
+            os.close(parent)
         with os.fdopen(fd, "rb") as handle:
             if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
                 raise EquipeError("ce n'est pas un fichier")
@@ -113,22 +134,32 @@ def clients_write(args: dict, **_kw) -> str:
     append = bool(args.get("ajouter", False))
     try:
         rel = str(args.get("chemin", ""))
-        if not [p for p in rel.split("/") if p not in ("", ".")]:
+        parts = split_path(rel)
+        if not parts:
             raise EquipeError("chemin de fichier requis")
-        target = safe_path(rel, must_exist=False)
-        _ensure_dirs(target.parent)
-        if target.parent.is_symlink() or os.path.lexists(target) and target.is_symlink():
-            raise EquipeError("lien symbolique refusé")
-        flags = os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | (os.O_APPEND if append else os.O_TRUNC)
-        fd = os.open(target, flags, 0o660)
+        parent = open_dir(parts[:-1], create=True)
+        try:
+            base = os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
+            try:
+                fd, created = os.open(parts[-1], base | os.O_CREAT | os.O_EXCL, 0o660, dir_fd=parent), True
+            except FileExistsError:
+                fd, created = os.open(parts[-1], base | (os.O_APPEND if append else 0), dir_fd=parent), False
+        except OSError as exc:
+            raise EquipeError("lien symbolique ou fichier inaccessible : refusé") from exc
+        finally:
+            os.close(parent)
         with os.fdopen(fd, "wb") as handle:
-            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                raise EquipeError("ce n'est pas un fichier")
             st = os.fstat(handle.fileno())
-            if stat.S_IMODE(st.st_mode) != 0o660 and st.st_uid == os.geteuid():
-                # Fichier créé par ce compte : le masque du service ne doit pas fermer le groupe d'équipe.
-                # Le fichier d'un collègue reste tel quel (groupe d'équipe + ACL par défaut du dossier).
+            if not stat.S_ISREG(st.st_mode):
+                raise EquipeError("ce n'est pas un fichier")
+            if not created and st.st_nlink > 1:
+                raise EquipeError("fichier à liens multiples : refusé (il pourrait être lié à un fichier privé)")
+            if created:
+                # Fichier créé par cet appel : le masque du service ne doit pas fermer le groupe d'équipe.
+                # Un fichier existant garde ses droits (groupe d'équipe + ACL par défaut du dossier).
                 os.fchmod(handle.fileno(), 0o660)
+            elif not append:
+                handle.truncate(0)
             handle.write(content.encode("utf-8"))
         return json.dumps({"chemin": rel, "ecrit": len(content.encode("utf-8")), "mode": "ajout" if append else "remplacement"})
     except (EquipeError, OSError) as exc:

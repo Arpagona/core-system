@@ -172,9 +172,12 @@ class IsolationTest(unittest.TestCase):
         # Le responsable décide.
         self.assertEqual(thibaud.call("POST", "/api/kanban/unblock", {"id": decision})[0], 200)
         self.assertEqual(self.bridge.cards[2]["status"], "ready")
-        # Carte sans responsable : ouverte à l'équipe ; elle se réaffecte ensuite à un responsable.
+        # Carte sans responsable : aucune décision tant qu'elle n'est pas affectée ; on la rattache, puis son responsable décide.
+        self.assertEqual(thibaud.call("POST", "/api/kanban/complete", {"id": "t_00000004"})[0], 403)
+        self.assertEqual(mael.call("POST", "/api/kanban/archive", {"id": "t_00000004"})[0], 403)
         self.assertEqual(mael.call("POST", "/api/kanban/assign", {"id": "t_00000004", "assignee": "mael"})[0], 200)
         self.assertEqual(thibaud.call("POST", "/api/kanban/complete", {"id": "t_00000004"})[0], 403)
+        self.assertEqual(mael.call("POST", "/api/kanban/complete", {"id": "t_00000004"})[0], 200)
 
     def test_compte_sans_agent_refuse_net(self):
         orphan = self.client("orphelin")

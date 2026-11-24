@@ -155,6 +155,24 @@ class TeamZoneTest(unittest.TestCase):
         self.assertEqual(call(self.mael, "POST", f"/v1/default/banks/{TEAM}/memories", "jeton-mael", {"items": []}), 422)
         self.assertEqual(len(self.up.seen), before)
 
+    def test_secret_dans_les_metadonnees_ou_les_balises_refuse(self):
+        before = len(self.up.seen)
+        for extra in ({"metadata": {"source": "password = TOPSECRET"}}, {"tags": ["token:abcdef"]},
+                      {"context": "Bearer abc123"}, {"document_id": "api_key-1"}, {"champ_libre": "x"},
+                      {"tags": None}, {"metadata": "x"}, {"tags": [1]}, {"metadata": {"a": 1}, "tags": "x"}):
+            self.assertEqual(self.retain(self.mael, "jeton-mael", "Fait propre.", **extra), 422, extra)
+        self.assertEqual(call(self.mael, "POST", f"/v1/default/banks/{TEAM}/memories", "jeton-mael", {"items": "x"}), 422)
+        self.assertEqual(call(self.mael, "POST", f"/v1/default/banks/{TEAM}/memories", "jeton-mael", [1]), 422)
+        self.assertEqual(len(self.up.seen), before)
+
+    def test_usurpation_d_auteur_insensible_a_la_casse(self):
+        self.retain(self.mael, "jeton-mael", "Fait.", tags=["Auteur:thibaud", " ZONE : prive", "ok"],
+                    metadata={"Auteur": "thibaud", " zone ": "prive"})
+        item = json.loads(self.up.seen[-1][3])["items"][0]
+        self.assertEqual(sorted(item["tags"]), ["auteur:mael", "ok", "zone:equipe"])
+        self.assertEqual(sorted(item["metadata"]), ["auteur", "source", "zone"])
+        self.assertEqual((item["metadata"]["auteur"], item["metadata"]["zone"]), ("mael", "equipe"))
+
     def test_banque_personnelle_de_l_autre_toujours_refusee(self):
         self.assertEqual(call(self.mael, "POST", "/v1/default/banks/arpagona-thibaud/memories/recall", "jeton-mael", {}), 403)
         self.assertEqual(call(self.mael, "GET", "/v1/default/banks", "jeton-mael"), 403)

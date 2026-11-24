@@ -56,6 +56,7 @@ backup_cmd() {  # sauvegarde vérifiée AVANT toute migration (privé : root seu
   local dir="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
   install -d -m 700 "$BACKUP_ROOT" "$dir"
   # Services actifs : tar peut signaler « fichier modifié pendant la lecture » (code 1) ; l'archive est vérifiée plus bas.
+  [ -d /srv/agents ] || install -d -m 711 /srv/agents   # première installation : rien à sauvegarder, mais l'archive reste valide
   tar --warning=no-file-changed --exclude='*.sock' --exclude='models_dev_cache.json' --exclude='*/cache' --exclude='*/logs' --exclude='*/.hermes/installs' \
     -czf "$dir/agents.tar.gz" -C /srv agents || [ $? -eq 1 ]
   python3 - "$dir" "$LEGACY/kanban.db" <<'PY'
@@ -143,6 +144,7 @@ JSON
     chown "$user:$user" "$hh/hindsight/config.json"; chmod 600 "$hh/hindsight/config.json"
     # 6. Surcouche personnelle : personnalité propre à ce compte ; règle des deux zones (écrite une fois, jamais écrasée).
     if ! grep -q 'ZONE-EQUIPE' "$hh/SOUL.md" 2>/dev/null; then
+    [ -f "$hh/SOUL.md" ] && cp -p "$hh/SOUL.md" "$hh/SOUL.md.avant-deux-zones"   # ancienne consigne conservée
     cat > "$hh/SOUL.md" <<SOUL
 Tu es l'assistant personnel de $name sur le banc ARPAGONA (données fictives).
 Tu sers $name : sa boîte mail ($login@banc.invalid), ses préférences, sa mémoire personnelle.

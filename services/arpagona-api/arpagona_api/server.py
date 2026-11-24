@@ -245,11 +245,13 @@ def make_handler(app: App):
                     data["created_by"] = login
             if team and op in ("complete", "block", "unblock", "archive", "assign"):
                 # Visibilité commune ≠ droit de décider : seul le responsable de la carte agit dessus.
-                # Une carte sans responsable reste ouverte à l'équipe ; assign la rattache à un responsable.
+                # Une carte sans responsable ne se décide pas : on la rattache d'abord (assign) à un responsable.
                 status, shown = client.call("show", {"id": data.get("id", "")})
                 if status != 200:
                     return self._json(status, shown)
                 owner = self._card(shown).get("assignee")
+                if not owner and op != "assign":
+                    return self._json(403, {"error": "carte sans responsable : affectez-la d'abord à un responsable"})
                 if owner and owner != login:
                     app.store.audit(user["id"], "kanban_refusé_" + op, str(data.get("id", ""))[:64])
                     return self._json(403, {"error": f"seul le responsable de la carte ({owner}) peut le faire"})
@@ -264,7 +266,7 @@ def make_handler(app: App):
                 elif op == "show":
                     card = self._card(result)
                     card["mine"] = card.get("assignee") == login
-                    card["can_decide"] = card.get("assignee") in (None, "", login)
+                    card["can_decide"] = card.get("assignee") == login
             app.store.audit(user["id"], "kanban_" + op, str(status) + " " + str(data.get("id", ""))[:64])
             return self._json(status, result)
 

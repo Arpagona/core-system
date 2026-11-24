@@ -71,6 +71,24 @@ class MigrationTest(unittest.TestCase):
             self.assertEqual(again["reprises"], 0)
             self.assertEqual(sorted(again["comptes_deja_repris"]), ["mael", "thibaud"])
 
+    def test_echec_de_statut_pas_de_marqueur(self):
+        import tempfile
+        cli = FakeCli(self.personal, self.company)
+        base = cli.__call__
+
+        def failing(cmd, **kw):
+            if cmd[cmd.index("kanban") + 1] == "block":
+                return subprocess.CompletedProcess(cmd, 1, "", "refus")
+            return base(cmd, **kw)
+        with tempfile.TemporaryDirectory() as tmp:
+            report = migre.migrate("/cli", "/h", ["mael"], failing, reader=lambda login: self.personal[login], markers=tmp)
+            self.assertEqual(report["echecs"], 1)
+            self.assertFalse((Path(tmp) / "mael.kanban-repris").exists())  # reprise rejouable
+            ok = migre.migrate("/cli", "/h", ["mael"], cli, reader=lambda login: self.personal[login], markers=tmp)
+            self.assertEqual(ok["echecs"], 0)
+            self.assertEqual(len([t for t in self.company if t["assignee"] == "mael"]), 2)  # aucun doublon
+            self.assertTrue((Path(tmp) / "mael.kanban-repris").exists())
+
     def test_compte_invalide_refuse(self):
         with self.assertRaises(ValueError):
             migre.migrate("/cli", "/h", ["Mael;rm"], FakeCli({}, []), reader=lambda login: [])

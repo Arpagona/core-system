@@ -84,10 +84,16 @@ def migrate(cli: str, company_home: str, logins: list[str], runner=subprocess.ru
                 report["deja_presentes"] += 1
                 continue
             report["reprises"] += 1
+            status_cmd = None
             if card.get("status") == "blocked":
-                run(company + ["block", "--", new["id"], f"Reprise de l'ancien Kanban de {login} : en attente de sa décision"], runner)
+                status_cmd = ["block", "--", new["id"], f"Reprise de l'ancien Kanban de {login} : en attente de sa décision"]
             elif card.get("status") == "done":
-                run(company + ["complete", "--", new["id"]], runner)
+                status_cmd = ["complete", "--", new["id"]]
+            if status_cmd and run(company + status_cmd, runner).returncode:
+                # Le statut n'a pas pu être repris : pas de marqueur, la reprise sera relancée (la carte existe déjà).
+                report["echecs"] += 1
+                report["detail"].append({"login": login, "ancien": card["id"], "nouveau": new["id"], "erreur": "statut non repris"})
+                continue
             report["detail"].append({"login": login, "ancien": card["id"], "nouveau": new["id"], "statut": card.get("status")})
         if marker is not None and report["echecs"] == failures_before:
             marker.write_text("repris\n", encoding="utf-8")

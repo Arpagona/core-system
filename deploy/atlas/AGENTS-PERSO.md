@@ -18,7 +18,7 @@ Règles de partage :
 
 1. **Destination explicite.** L'agent n'écrit dans le commun que par des outils dédiés (`arpagona_equipe_*`, `arpagona_clients_*`). Sa mémoire automatique va **toujours** dans sa banque personnelle. En cas de doute : privé.
 2. **Aucun versement automatique.** Pas de copie de mail, de secret, ni de banque personnelle dans le commun. Le portier refuse un message électronique entier, un secret reconnaissable ou un fait de plus de 2 000 caractères.
-3. **Visibilité ≠ droit de décider.** Tout le monde voit et commente une décision ; seul le responsable de la carte la débloque, la termine, l'archive ou la réaffecte (HTTP 403 sinon). Une carte sans responsable (cartes de démonstration) reste ouverte à l'équipe.
+3. **Visibilité ≠ droit de décider.** Tout le monde voit et commente une décision ; seul le responsable de la carte la débloque, la termine, l'archive ou la réaffecte (HTTP 403 sinon). Une carte **sans responsable** (cartes de démonstration) ne se décide pas : on la rattache d'abord (`assign` / bouton « Me l'affecter ») à un responsable.
 4. **L'agent n'accède qu'à deux banques** : la sienne et celle de l'équipe.
 
 ```
@@ -87,10 +87,11 @@ Tests unitaires (CI) : `services/arpagona-api/tests/test_agents_isolation.py` (r
 3. **Administrateur `agentcore`** (sudo) voit tout : prévu sur le banc.
 4. **Humains** : le compte Unix `mael` est habilité à l'espace commun (aucun droit sur les dossiers privés des agents). Thibaud n'a pas de compte Unix sur la VM ; s'il en reçoit un, l'ajouter à `HUMANS`. Les humains passent sinon par Mission Control.
 5. **Rappel d'équipe explicite** : la mémoire automatique de l'agent ne rappelle que sa banque personnelle ; le rappel métier d'équipe passe par l'outil `arpagona_equipe_memoire_chercher` (consigne dans `SOUL.md`). Un modèle qui n'appelle pas l'outil ne consultera pas l'équipe.
-6. **Détection de secrets/mails du portier** : motifs simples (mots-clés, en-têtes de mail, taille). Un secret déguisé passerait ; la barrière principale est la destination explicite.
-7. **Droit de décision** : appliqué par l'API Mission Control. La base du Kanban d'entreprise n'est lisible que par le compte de l'instance commune, mais la CLI Hermès elle-même ne connaît pas la règle. Une carte sans responsable est ouverte à l'équipe.
-8. **Observations Hindsight** : les synthèses automatiques de la banque d'équipe n'ont ni auteur ni source ; l'outil de rappel ne rend que les faits d'origine.
-9. **Moteur commun `hermes-arpagona` conservé** (il porte le code partagé et le Kanban d'entreprise). Le compte `dupont` n'a pas d'agent.
-10. **Outils des agents** : `web`, `todo`, `arpagona` (outils mail et équipe). Pas de terminal, pas de mémoire native.
-11. **ACL** : Hermès remet `.hermes` à `0700` à chaque démarrage et à chaque appel de sa CLI ; les services agents n'en dépendent pas (montage en lecture seule). Les commandes d'administration hors service demandent d'abord `agents-perso.sh acl` ; la recette le rejoue.
-12. **Boîtes fictives** : brancher de vraies boîtes demande des identifiants par utilisateur et un accord de Thibaud.
+6. **Détection de secrets/mails du portier** : motifs simples (mots-clés, en-têtes de mail, taille) appliqués à tous les champs conservés (texte, contexte, balises, métadonnées) ; schéma strict des champs. Un secret déguisé passerait ; la barrière principale est la destination explicite.
+7. **Droit de décision** : appliqué par l'API Mission Control, en deux appels (lecture du responsable puis action) : une réaffectation concurrente par le responsable lui-même dans cette fenêtre n'est pas exclue. La base du Kanban d'entreprise n'est lisible que par le compte de l'instance commune, mais la CLI Hermès ne connaît pas la règle.
+8. **Reprise du Kanban** : toutes les cartes d'un ancien tableau personnel sont copiées dans le tableau commun (c'est l'objet de la correction). Sur le banc, ce sont des cartes fictives ; avec de vraies données, trier les cartes avant reprise.
+9. **Observations Hindsight** : les synthèses automatiques de la banque d'équipe n'ont ni auteur ni source ; l'outil de rappel ne rend que les faits d'origine.
+10. **Moteur commun `hermes-arpagona` conservé** (il porte le code partagé et le Kanban d'entreprise). Le compte `dupont` n'a pas d'agent.
+11. **Outils des agents** : `web`, `todo`, `arpagona` (outils mail et équipe). Pas de terminal, pas de mémoire native.
+12. **ACL** : Hermès remet `.hermes` à `0700` à chaque démarrage et à chaque appel de sa CLI ; les services agents n'en dépendent pas (montage en lecture seule). Les commandes d'administration hors service demandent d'abord `agents-perso.sh acl` ; la recette le rejoue.
+13. **Boîtes fictives** : brancher de vraies boîtes demande des identifiants par utilisateur et un accord de Thibaud.

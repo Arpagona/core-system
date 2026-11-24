@@ -63,16 +63,34 @@ def team_allowed(method: str, raw_path: str, team_bank: str) -> bool:
     return False
 
 
+ITEM_KEYS = {"content", "context", "tags", "metadata", "document_id"}
+RESERVED_TAG = re.compile(r"(?i)^\s*(auteur|zone)\s*:")
+RESERVED_META = {"auteur", "zone"}
+
+
 def team_refusal(item: dict) -> str | None:
-    """Raison du refus d'un fait destiné à l'équipe, ou None. Aucun mail entier, aucun secret."""
+    """Raison du refus d'un fait destiné à l'équipe, ou None. Aucun mail entier, aucun secret, aucun champ inconnu."""
+    if set(item) - ITEM_KEYS:
+        return "champ non autorisé dans un fait d'équipe"
     content = item.get("content")
     if not isinstance(content, str) or not content.strip():
         return "fait vide"
     if len(content) > MAX_TEAM_CONTENT:
         return "fait trop long : un fait d'équipe est une phrase ou un court paragraphe, pas un document"
-    if len(MAIL_HEADER_RE.findall(content)) >= 2:
+    tags, meta = item.get("tags", []), item.get("metadata", {})
+    if not isinstance(tags, list) or not all(isinstance(t, str) and len(t) <= 100 for t in tags) or len(tags) > 20:
+        return "balises invalides"
+    if not isinstance(meta, dict) or len(meta) > 20 or not all(isinstance(k, str) and len(k) <= 60 for k in meta):
+        return "métadonnées invalides"
+    for key in ("context", "document_id"):
+        if key in item and not isinstance(item[key], str):
+            return f"{key} invalide"
+    # Tous les champs qui seront conservés sont examinés, pas seulement le texte du fait.
+    haystack = "\n".join([content, item.get("context", ""), item.get("document_id", ""), *tags,
+                          *(f"{k}={v}" for k, v in meta.items())])
+    if len(MAIL_HEADER_RE.findall(haystack)) >= 2:
         return "un message électronique entier ne se verse pas dans la mémoire d'équipe"
-    if SECRET_RE.search(content) or SECRET_RE.search(json.dumps(item.get("context", ""))):
+    if SECRET_RE.search(haystack):
         return "secret ou identifiant détecté : refusé"
     return None
 
@@ -84,7 +102,7 @@ def stamp_team_retain(body: bytes, author: str) -> tuple[bytes | None, str]:
         items = data["items"]
     except (ValueError, KeyError, TypeError):
         return None, "corps invalide"
-    if not isinstance(items, list) or not 0 < len(items) <= MAX_TEAM_ITEMS:
+    if not isinstance(data, dict) or not isinstance(items, list) or not 0 < len(items) <= MAX_TEAM_ITEMS:
         return None, "nombre de faits invalide"
     for item in items:
         if not isinstance(item, dict):
@@ -92,9 +110,9 @@ def stamp_team_retain(body: bytes, author: str) -> tuple[bytes | None, str]:
         reason = team_refusal(item)
         if reason:
             return None, reason
-        tags = [t for t in item.get("tags", []) if isinstance(t, str) and not t.startswith(("auteur:", "zone:"))]
+        tags = [t for t in item.get("tags", []) if not RESERVED_TAG.match(t)]
         item["tags"] = tags + [f"auteur:{author}", "zone:equipe"]
-        meta = {str(k): str(v) for k, v in (item.get("metadata") or {}).items() if k not in ("auteur", "zone")}
+        meta = {str(k): str(v) for k, v in (item.get("metadata") or {}).items() if k.strip().lower() not in RESERVED_META}
         meta.setdefault("source", f"agent:{author}")
         meta["auteur"], meta["zone"] = author, "equipe"
         item["metadata"] = meta
