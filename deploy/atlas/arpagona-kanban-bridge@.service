@@ -23,6 +23,11 @@ PrivateDevices=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/srv/agents/%i
+# L'Hermès commun disparaît de la vue du service, sauf son code, ses outils et ses dépendances (lecture seule).
+# Ainsi les droits de traversée de /srv/hermes-arpagona/.hermes (remis à 0700 par Hermès à chaque démarrage)
+# ne peuvent pas casser un agent, et ses secrets et sa base ne sont même pas visibles.
+TemporaryFileSystem=/srv/hermes-arpagona:ro
+BindReadOnlyPaths=/srv/hermes-arpagona/.hermes/hermes-agent /srv/hermes-arpagona/.hermes/tools /srv/hermes-arpagona/.hermes/installs
 InaccessiblePaths=/etc/arpagona-api /var/lib/arpagona-api /etc/agentcore /var/lib/agentcore /var/backups/agentcore /etc/hindsight-gate
 ProtectKernelTunables=yes
 ProtectKernelModules=yes

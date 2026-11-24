@@ -3,7 +3,7 @@
 # Pour chaque utilisateur : compte Unix propre, HERMES_HOME propre (config, mémoire, skills, Kanban,
 # secrets), banque Hindsight propre derrière un portier, boîte mail fictive (Maildir) propre.
 # Le code d'Hermès reste commun et en lecture seule (ACL du groupe hermes-core).
-# Usage : agents-perso.sh install [--seed] | status
+# Usage : agents-perso.sh install [--seed] | status | acl
 # Le Hermès « commun » (hermes-arpagona) n'est ni arrêté ni modifié, hormis deux ACL de traversée.
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "à lancer en root" >&2; exit 1; }
@@ -25,15 +25,20 @@ as_agent() {  # as_agent <login> <commande...>
     PYTHONDONTWRITEBYTECODE=1 "$@")
 }
 
+acl_cmd() {  # droits de lecture du socle ; à rejouer si Hermès remet .hermes à 0700 (masque ACL)
+  command -v setfacl >/dev/null || apt-get install -y acl >/dev/null
+  groupadd -f hermes-core
+  setfacl -m g:hermes-core:--x /srv/hermes-arpagona "$LEGACY"
+  setfacl -m m::--x "$LEGACY"
+  for d in hermes-agent tools installs; do setfacl -R -m g:hermes-core:r-X "$LEGACY/$d"; done
+}
+
 install_cmd() {
   local seed="${1:-}"
   [ -x "$CLI" ] || { echo "Hermès commun introuvable : $CLI" >&2; exit 1; }
-  command -v setfacl >/dev/null || apt-get install -y acl >/dev/null
 
   # 1. Socle commun en lecture seule : le groupe hermes-core traverse et lit le code, rien d'autre.
-  groupadd -f hermes-core
-  setfacl -m g:hermes-core:--x /srv/hermes-arpagona "$LEGACY"
-  for d in hermes-agent tools installs; do setfacl -R -m g:hermes-core:r-X "$LEGACY/$d"; done
+  acl_cmd
   id hindsight-gate >/dev/null 2>&1 || useradd --system --no-create-home --home-dir /nonexistent \
     --shell /usr/sbin/nologin --user-group hindsight-gate
   install -d -m 711 /srv/agents
@@ -198,5 +203,6 @@ status_cmd() {
 case "${1:-}" in
   install) install_cmd "${2:-}" ;;
   status) status_cmd ;;
-  *) echo "usage : $0 install [--seed] | status" >&2; exit 2 ;;
+  acl) acl_cmd ;;
+  *) echo "usage : $0 install [--seed] | status | acl" >&2; exit 2 ;;
 esac
