@@ -14,8 +14,13 @@ jobs:
         run: /usr/bin/python3 -m unittest discover -s tests
       - name: Tests passerelle Kanban
         run: /usr/bin/python3 -m unittest discover -s services/kanban-bridge/tests
-      - name: Compiler le plugin et les outils de développement
-        run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py dev/*.py
+      - name: Tests portier Hindsight (banque personnelle + banque d'équipe)
+        working-directory: services/hindsight-gate
+        run: PYTHONPATH=. /usr/bin/python3 -m unittest discover -s tests
+      - name: Compiler les plugins, la recette d'isolation et les outils de développement
+        run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py plugins/arpagona-mail/__init__.py plugins/arpagona-equipe/__init__.py deploy/atlas/migrate_kanban_equipe.py tests/e2e/isolation_agents.py dev/*.py
+      - name: Syntaxe des scripts de déploiement des agents personnels
+        run: bash -n deploy/atlas/agents-perso.sh && bash -n deploy/atlas/rollback-agents-perso.sh
       - name: Parcours complet sur poste local (moteur et Kanban simulés)
         run: /usr/bin/python3 -m unittest discover -s tests/dev -v
       - name: Contrôles de sécurité ciblés

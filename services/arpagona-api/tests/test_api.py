@@ -226,6 +226,11 @@ class ApiTest(unittest.TestCase):
         end = self._events(alice.call("POST", "/api/chat", {"text": "/status"})[1])[-1]
         self.assertIn("Moteur Hermès : joignable", end["text"])
         self.assertIn("Engagements actifs : 0", end["text"])
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        uid = self.store.check_password("alice", PASSWORD_A)["id"]
+        opened = datetime.fromtimestamp(self.store.conversation_for(uid)["created_at"], ZoneInfo("Europe/Paris"))
+        self.assertIn(opened.strftime("%d/%m/%Y %H:%M"), end["text"], "heure de Paris, pas celle du serveur")
         end = self._events(alice.call("POST", "/api/chat", {"text": "/inconnue"})[1])[-1]
         self.assertIn("Commande inconnue", end["text"])
         self.assertEqual(self.engine.sessions, [], "aucune commande ne part au moteur")

@@ -46,8 +46,8 @@ function setBusy(on, label) {
 async function start() {
   const res = await fetch("/api/me");
   if (res.status !== 200) { show("login"); return; }
-  const me = await res.json();
-  $("who-name").textContent = me.name;
+  meUser = await res.json();
+  $("who-name").textContent = meUser.name;
   show("app");
   await loadConversation();
   loadKanban();
@@ -249,6 +249,8 @@ for (const tab of document.querySelectorAll(".tab")) {
 
 const COLUMNS = [["todo", "À trier / À faire", ["triage", "todo"]], ["ready", "Prêt", ["ready"]], ["running", "En cours", ["running"]], ["blocked", "Bloqué / Planifié", ["blocked", "scheduled"]], ["review", "En revue", ["review"]], ["done", "Terminé", ["done"]]];
 let selectedCard = null;
+let kanbanScope = "all";
+let meUser = null;
 async function kanban(op, data) {
   const res = await fetch("/api/kanban/" + op, data ? {method:"POST", headers:HEADERS, body:JSON.stringify(data)} : {});
   const result = await res.json();
@@ -261,7 +263,7 @@ function node(tag, text, cls) {
 async function loadKanban() {
   if ($("app-view").hidden) return;
   try {
-    const result = await kanban("list");
+    const result = await kanban("list" + (kanbanScope === "mine" ? "?scope=mine" : ""));
     const tasks = Array.isArray(result) ? result : (result.tasks || []);
     $("board").replaceChildren();
     for(const [key, title, states] of COLUMNS) {
@@ -275,8 +277,25 @@ async function loadKanban() {
       }
       $("board").append(col);
     }
+    const owners = [...new Set(tasks.map(t => t.assignee).filter(Boolean))];
+    const select = $("card-assignee");
+    if (select && !select.dataset.ready) { fillAssignees(select, owners); }
     $("kanban-status").textContent = "À jour · actualisation toutes les 10 s";
   } catch(err) { $("kanban-status").textContent = "Kanban indisponible"; }
+}
+function fillAssignees(select, owners) {
+  select.dataset.ready = "1";
+  for (const login of [...new Set([meUser && meUser.login, ...owners].filter(Boolean))]) {
+    const o = node("option", login === (meUser && meUser.login) ? login + " (moi)" : login); o.value = login; select.append(o);
+  }
+}
+for (const [id, scope] of [["scope-all", "all"], ["scope-mine", "mine"]]) {
+  $(id).addEventListener("click", () => {
+    kanbanScope = scope;
+    $("scope-all").className = "btn " + (scope === "all" ? "on" : "ghost");
+    $("scope-mine").className = "btn " + (scope === "mine" ? "on" : "ghost");
+    loadKanban();
+  });
 }
 async function openCard(id) {
   try {
@@ -289,7 +308,19 @@ async function openCard(id) {
     $("detail-meta").textContent = (COLUMNS.find(c => c[2].includes(task.status)) || [null,task.status])[1] + " · " + (task.assignee || "Non affectée");
     $("comments").replaceChildren(...(result.comments || task.comments || []).map(c => node("p", (c.author || "Équipe") + " · " + (c.body || c.text || c.content || ""))));
     $("card-actions").replaceChildren();
-    for(const [op, label] of [["complete","Terminer"],[task.status === "blocked" ? "unblock" : "block",task.status === "blocked" ? "Débloquer" : "Bloquer"],["archive","Archiver"]]) {
+    const canDecide = task.can_decide !== false;
+    if (!canDecide) $("detail-meta").textContent += task.assignee ? " · décision réservée à " + task.assignee : " · sans responsable : affectez-la avant toute décision";
+    if (!task.assignee) {
+      const claim = node("button", "Me l'affecter", "btn");
+      claim.addEventListener("click", async () => {
+        claim.disabled = true;
+        try { await kanban("assign", {id, assignee: meUser.login}); await openCard(id); await loadKanban(); }
+        catch(err) { $("card-error").textContent = err.message; }
+        finally { claim.disabled = false; }
+      });
+      $("card-actions").append(claim);
+    }
+    for(const [op, label] of canDecide ? [["complete","Terminer"],[task.status === "blocked" ? "unblock" : "block",task.status === "blocked" ? "Débloquer" : "Bloquer"],["archive","Archiver"]] : []) {
       const b = node("button", label, "btn ghost");
       b.addEventListener("click", async () => {
         b.disabled = true;
@@ -312,7 +343,7 @@ $("new-card").addEventListener("click", () => {
 $("close-card").addEventListener("click", () => $("card-dialog").close());
 $("create-card").addEventListener("submit", async ev => {
   ev.preventDefault(); const btn = ev.submitter; btn.disabled = true;
-  try { await kanban("create", {title:$("card-name").value,body:$("card-body").value}); $("card-dialog").close(); await loadKanban(); }
+  try { await kanban("create", {title:$("card-name").value,body:$("card-body").value,assignee:$("card-assignee").value || undefined}); $("card-dialog").close(); await loadKanban(); }
   catch(err) { $("card-error").textContent = err.message; }
   finally { btn.disabled = false; }
 });

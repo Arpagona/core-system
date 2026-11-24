@@ -63,6 +63,10 @@ Essais faits sur la VM, par l'API en boucle locale, avec des données fictives.
 
 Non encore exercée. Procédure prévue : snapshot Proxmox, relance de `install-hermes.sh` avec `HERMES_COMMIT=<nouveau commit>`, recette rejouée, retour au snapshot en cas de régression.
 
+## Agents personnels par utilisateur
+
+Deux zones. Chaque utilisateur (`mael`, `thibaud`) a son agent, sa mémoire personnelle, ses préférences et sa boîte mail fictive, privés (comptes Unix). L'entreprise partage sa mémoire d'équipe, ses dossiers clients et un Kanban unique avec un responsable par carte : voir [AGENTS-PERSO.md](AGENTS-PERSO.md).
+
 ## Déploiement reproductible et recette du banc
 
 Tout l'état du banc lié à ARPAGONA est posé par `deploy-arpagona.sh` ; aucun geste manuel n'est requis après lui.

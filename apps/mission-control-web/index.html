@@ -36,13 +36,13 @@
  <section id="view-engagements" class="page panel" hidden><p class="eyebrow">Ne rien laisser passer</p><h2>Engagements</h2><p class="hint">Les décisions datées. À l'échéance, l'agent prépare un brouillon, jamais un envoi.</p><div id="engagements-list" class="cards"></div></section>
  <section id="view-kanban" class="kanban panel">
   <div class="section-head"><div><p class="eyebrow">Du cap à l'action</p><h2>Kanban</h2></div><button id="new-card" class="btn">+ Nouvelle carte</button></div>
-  <p class="hint">Le tableau de l'équipe · cartes créées sans affectation.</p><p id="kanban-status" role="status" class="status"></p><div id="board" class="board"></div>
+  <p class="hint">Le tableau de l'entreprise, commun à l'équipe · chaque carte a un responsable. Tout le monde voit et commente ; seul le responsable décide.</p><div class="filters" role="group" aria-label="Filtre des cartes"><button id="scope-all" class="btn on" type="button">Toutes les cartes</button><button id="scope-mine" class="btn ghost" type="button">Mes cartes</button></div><p id="kanban-status" role="status" class="status"></p><div id="board" class="board"></div>
  </section>
  </div>
 </main>
 <footer>ARPAGONA · Données maîtrisées · Validation humaine <details><summary>À propos</summary>Hermes Agent — © Nous Research, licence MIT.</details></footer>
 <dialog id="card-dialog" aria-labelledby="card-title"><button id="close-card" class="close btn ghost" aria-label="Fermer">×</button><h2 id="card-title">Nouvelle carte</h2>
- <form id="create-card"><label for="card-name">Titre</label><input id="card-name" required maxlength="200"><label for="card-body">Description</label><textarea id="card-body" rows="4" maxlength="8000"></textarea><p class="hint">Sans affectation : aucun agent n'est déclenché.</p><button class="btn primary">Créer la carte</button></form>
+ <form id="create-card"><label for="card-name">Titre</label><input id="card-name" required maxlength="200"><label for="card-body">Description</label><textarea id="card-body" rows="4" maxlength="8000"></textarea><label for="card-assignee">Responsable</label><select id="card-assignee"></select><p class="hint">Aucun agent n'est déclenché par la création d'une carte.</p><button class="btn primary">Créer la carte</button></form>
  <div id="card-detail" hidden><p id="detail-meta" class="hint"></p><p id="detail-body"></p><h3>Commentaires</h3><div id="comments"></div><form id="comment-form"><label for="comment-text">Votre commentaire</label><textarea id="comment-text" required maxlength="8000" rows="3"></textarea><button class="btn">Commenter</button></form><div id="card-actions" class="actions"></div></div><p id="card-error" role="alert" class="error"></p>
 </dialog>
 <script src="app.js"></script></body></html>

@@ -42,6 +42,15 @@ if [ ! -s "$ENVF" ]; then
   } > "$ENVF"
   umask 022
 fi
+# Consigne de rétention (versionnée) : n'extraire que ce que l'utilisateur affirme ou qu'un outil confirme,
+# jamais les suppositions de l'assistant. Réécrite à chaque installation ; une seule ligne, sans guillemet.
+MISSION_FILE="$(dirname "$0")/hindsight-retain-mission.txt"
+if [ -s "$MISSION_FILE" ]; then
+  MISSION="$(tr '\n"' '  ' < "$MISSION_FILE" | sed 's/  */ /g; s/ *$//')"
+  ( umask 077; grep -v "^HINDSIGHT_API_RETAIN_MISSION=" "$ENVF" > "$ENVF.new" ) || true
+  printf 'HINDSIGHT_API_RETAIN_MISSION="%s"\n' "$MISSION" >> "$ENVF.new"
+  mv "$ENVF.new" "$ENVF"
+fi
 chown root:hindsight-arpagona "$ENVF"; chmod 640 "$ENVF"
 
 cat > /etc/systemd/system/hindsight-arpagona.service <<UNIT
