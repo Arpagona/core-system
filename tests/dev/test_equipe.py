@@ -53,6 +53,19 @@ class ClientsTest(unittest.TestCase):
         names = [e["nom"] for e in self.call(self.eq.clients_list, chemin="dupont")["entrees"]]
         self.assertEqual(names, ["fiche.md"])
 
+    def test_fichier_d_un_collegue_modifiable_sans_etre_proprietaire(self):
+        """Simule un fichier dont on n'est pas propriétaire : la modification ne doit pas échouer sur fchmod."""
+        self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="x")
+        real_geteuid = os.geteuid
+        self.eq.os.geteuid = lambda: real_geteuid() + 1  # le « collègue » n'est pas propriétaire
+        try:
+            os.chmod(self.clients / "a" / "fiche.md", 0o640)  # mode différent : l'ancien code appelait fchmod
+            out = self.call(self.eq.clients_write, chemin="a/fiche.md", contenu="y", ajouter=True)
+        finally:
+            self.eq.os.geteuid = real_geteuid
+        self.assertEqual(out.get("ecrit"), 1, out)
+        self.assertEqual((self.clients / "a" / "fiche.md").read_text(encoding="utf-8"), "xy")
+
     def test_traversees_refusees(self):
         for bad in ("../prive-mael/secret.txt", "/etc/passwd", "dupont/../../prive-mael/secret.txt",
                     "a\\b", ".cache/x", "dupont/\x00x", "%2e%2e/x"):

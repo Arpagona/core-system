@@ -448,7 +448,7 @@ def team_files() -> None:
             check(f"{other} : lien symbolique vers un dossier privé refusé (lecture et écriture)",
                   "error" in plugin_call(other, "clients_read", {"chemin": f"{base}/dossier-piege-{who}/.hermes/.env"})
                   and "error" in plugin_call(other, "clients_write", {"chemin": f"{base}/dossier-piege-{who}/intrus.txt", "contenu": "x"}))
-            check(f"{other} : le lien ne donne pas non plus accès par les droits Unix", denied(f"agent-{other}", f"cat {CLIENTS}/{base}/piege-{who}"))
+            check(f"{who} : son propre lien vers le privé de {other} ne lui ouvre rien (droits Unix)", denied(f"agent-{who}", f"cat {CLIENTS}/{base}/piege-{who}"))
         check("aucun fichier créé chez l'autre par les tentatives d'écriture", not Path(home("thibaud"), "intrus.txt").exists() and not Path(home("mael"), "intrus.txt").exists())
         for who, other in (("mael", "thibaud"), ("thibaud", "mael")):
             check(f"agent-{who} : l'espace commun ne rouvre pas les dossiers privés de {other}",

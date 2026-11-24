@@ -124,7 +124,11 @@ def clients_write(args: dict, **_kw) -> str:
         with os.fdopen(fd, "wb") as handle:
             if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
                 raise EquipeError("ce n'est pas un fichier")
-            os.fchmod(handle.fileno(), 0o660)  # lisible et modifiable par le groupe d'équipe, fermé aux autres
+            st = os.fstat(handle.fileno())
+            if stat.S_IMODE(st.st_mode) != 0o660 and st.st_uid == os.geteuid():
+                # Fichier créé par ce compte : le masque du service ne doit pas fermer le groupe d'équipe.
+                # Le fichier d'un collègue reste tel quel (groupe d'équipe + ACL par défaut du dossier).
+                os.fchmod(handle.fileno(), 0o660)
             handle.write(content.encode("utf-8"))
         return json.dumps({"chemin": rel, "ecrit": len(content.encode("utf-8")), "mode": "ajout" if append else "remplacement"})
     except (EquipeError, OSError) as exc:
