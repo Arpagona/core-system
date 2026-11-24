@@ -303,6 +303,9 @@ def main() -> None:
     args = parser.parse_args()
     if os.geteuid() != 0:
         sys.exit("à lancer en root")
+    # Hermès remet .hermes à 0700 à chaque démarrage (masque ACL) : on rejoue les droits de lecture du socle
+    # pour les contrôles faits « hors service ». Les services eux-mêmes n'en dépendent pas (montage lecture seule).
+    subprocess.run(["bash", "/opt/arpagona/current/deploy/atlas/agents-perso.sh", "acl"], check=True)
     unix_isolation()
     network_isolation()
     mail_isolation(args.live)
