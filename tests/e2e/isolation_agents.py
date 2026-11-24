@@ -164,9 +164,10 @@ def mail_isolation(live: bool) -> None:
     if live:
         key = secret("mael", "api_server_key")
         sid = f"isolation-{int(time.time())}"
+        canary = f"CANARI-LIVE-MAEL-{sid[-10:]}"  # unique par exécution : la recette est rejouable
         status, raw = http("POST", f"http://127.0.0.1:{USERS['mael']['engine']}/v1/runs", key, {
             "input": "Avec arpagona_mail_draft, dépose un brouillon à client-fictif@exemple.invalid, sujet "
-                     "\"CANARI-LIVE-MAEL\", corps \"Test d'isolation\". Réponds OK.", "session_id": sid},
+                     f"\"{canary}\", corps \"Test d'isolation\". Réponds OK.", "session_id": sid},
             {"Idempotency-Key": sid})
         run = json.loads(raw)["run_id"] if status == 202 else ""
         state = ""
@@ -176,7 +177,7 @@ def mail_isolation(live: bool) -> None:
             state = json.loads(body).get("status", "") if st == 200 else ""
             if state in ("completed", "failed", "cancelled"):
                 break
-        found = subprocess.run(["grep", "-rl", "CANARI-LIVE-MAEL", "/srv/agents"], capture_output=True, text=True).stdout.split()
+        found = subprocess.run(["grep", "-rl", canary, "/srv/agents"], capture_output=True, text=True).stdout.split()
         in_mael = [p for p in found if p.startswith(f"{home('mael')}/mail/Drafts/")]
         elsewhere = [p for p in found if not p.startswith(f"{home('mael')}/")]
         check("run réel : l'agent de Maël crée le brouillon dans la boîte de Maël", state == "completed" and len(in_mael) == 1, state)
