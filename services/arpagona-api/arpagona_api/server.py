@@ -17,6 +17,7 @@ from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fie
 from .hermes import TERMINAL, HermesClient, HermesError
 from .store import SESSION_TTL_S, Store
 from .kanban import KanbanClient
+from .agents import AgentRegistry
 
 COOKIE = "arpagona_session"
 MAX_BODY = 16 * 1024
@@ -41,6 +42,8 @@ class App:
         self.cookie_secure = cookie_secure
         self.service_token = service_token
         self.kanban: KanbanClient | None = None
+        # Registre d'agents personnels : s'il est chargé, chaque compte n'atteint QUE son propre agent.
+        self.agents: AgentRegistry | None = None
         self._fails: dict[str, tuple[int, float]] = {}
         self._fails_lock = threading.Lock()
 
@@ -61,14 +64,27 @@ class App:
         with self._fails_lock:
             self._fails.pop(login, None)
 
+    # --- agent personnel d'un compte ----------------------------------------
+    def hermes_for(self, login: str) -> HermesClient | None:
+        if self.agents is None:
+            return self.hermes
+        profile = self.agents.for_login(login)
+        return profile.hermes if profile else None
+
+    def kanban_for(self, login: str) -> KanbanClient | None:
+        if self.agents is None:
+            return self.kanban
+        profile = self.agents.for_login(login)
+        return profile.kanban if profile else None
+
     # --- messages en attente ----------------------------------------------
-    def settle_from_engine(self, message_id: int, run_id: str | None) -> None:
+    def settle_from_engine(self, message_id: int, run_id: str | None, hermes: HermesClient | None = None) -> None:
         """Arrête l'état d'une réponse d'après le moteur. Ne conclut rien si l'exécution est encore en cours."""
         if not run_id:
             self.store.settle_message(message_id, "La demande n'a pas pu être transmise.", "failed")
             return
         try:
-            status = self.hermes.run_status(run_id)
+            status = (hermes or self.hermes).run_status(run_id)
         except HermesError:
             return
         state = status.get("status")
@@ -205,7 +221,7 @@ def make_handler(app: App):
             if op == "comment":
                 # L'auteur vient du compte connecté, jamais du navigateur.
                 data["author"] = user["display_name"]
-            client = getattr(app, "kanban", None)
+            client = app.kanban_for(user["login"])
             status, result = client.call(op, data) if client else (503, {"error": "Kanban indisponible"})
             app.store.audit(user["id"], "kanban_" + op, str(status) + " " + str(data.get("id", ""))[:64])
             return self._json(status, result)
@@ -258,9 +274,10 @@ def make_handler(app: App):
             if not user:
                 return self._json(401, {"error": "non connecté"})
             conv = app.store.conversation_for(user["id"])
+            hermes = app.hermes_for(user["login"])
             for row in app.store.messages(conv["id"]):
-                if row["status"] == "pending":
-                    app.settle_from_engine(row["id"], row["run_id"])
+                if row["status"] == "pending" and hermes is not None:
+                    app.settle_from_engine(row["id"], row["run_id"], hermes)
             rows = app.store.messages(conv["id"])
             self._json(200, {"messages": [
                 {"id": r["id"], "role": r["role"], "text": r["content"], "status": r["status"], "at": r["created_at"]}
@@ -279,10 +296,14 @@ def make_handler(app: App):
                 return self._json(409, {"error": "une réponse est déjà en cours"})
             if text.startswith("/"):
                 return self._command(user, conv, text)
+            hermes = app.hermes_for(user["login"])
+            if hermes is None:
+                app.store.audit(user["id"], "chat_refusé_sans_agent", user["login"])
+                return self._json(503, {"error": "aucun agent personnel n'est configuré pour ce compte"})
             app.store.add_message(conv["id"], "user", text)
             answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending")
             try:
-                run_id = app.hermes.start_run(text, conv["hermes_session_id"],
+                run_id = hermes.start_run(text, conv["hermes_session_id"],
                                               f"arpagona-{conv['hermes_session_id']}-msg-{answer_id}")
             except HermesError as exc:
                 app.store.settle_message(answer_id, "Le moteur est indisponible.", "failed")
@@ -307,7 +328,7 @@ def make_handler(app: App):
 
             send({"type": "start", "id": answer_id})
             try:
-                for event in app.hermes.events(run_id):
+                for event in hermes.events(run_id):
                     kind = event.get("event", "")
                     if kind == "message.delta":
                         send({"type": "delta", "text": event.get("delta", "")})
@@ -318,7 +339,7 @@ def make_handler(app: App):
             # L'état final vient toujours du moteur, pas du flux relayé.
             deadline = time.time() + 30
             while time.time() < deadline:
-                app.settle_from_engine(answer_id, run_id)
+                app.settle_from_engine(answer_id, run_id, hermes)
                 if not app.store.has_pending(conv["id"]):
                     break
                 time.sleep(1)
@@ -363,7 +384,9 @@ def make_handler(app: App):
             engagements = app.store.engagements(user["id"])
             active = [e for e in engagements if e["status"] in ("planifie", "en_preparation", "pret", "en_attente")]
             waiting = [d for d in app.store.drafts(user["id"]) if d["status"] == "en_attente"]
-            engine = "joignable" if app.hermes.healthy() else "INJOIGNABLE"
+            hermes = app.hermes_for(user["login"])
+            engine = ("AUCUN AGENT PERSONNEL" if hermes is None
+                      else "joignable" if hermes.healthy() else "INJOIGNABLE")
             return "\n".join([
                 f"Compte : {user['display_name']} ({user['login']})",
                 f"Conversation ouverte depuis le {started} : {len(messages)} message(s)",
@@ -372,7 +395,8 @@ def make_handler(app: App):
                 f"Moteur Hermès : {engine}",
                 f"Engagements actifs : {len(active)} sur {len(engagements)}",
                 f"Brouillons à valider : {len(waiting)}",
-                "Mémoire : mémoire d'équipe de l'instance (non effacée par /new)",
+                ("Mémoire : mémoire personnelle de ce compte (non effacée par /new)" if app.agents is not None
+                 else "Mémoire : mémoire d'équipe de l'instance (non effacée par /new)"),
             ])
 
         # --- engagements et approbations (utilisateur) ----------------------
@@ -425,9 +449,17 @@ def make_handler(app: App):
         def _service_user(self):
             """Authentifie l'appel d'outil et rattache la session Hermès à un utilisateur."""
             token = self.headers.get("X-Arpagona-Service", "")
+            session = self.headers.get("X-Hermes-Session", "")
+            if app.agents is not None:
+                # Un jeton n'ouvre que les sessions de SON propriétaire : l'agent de l'un ne peut pas
+                # agir au nom de l'autre, même avec un identifiant de session valide.
+                owner = app.agents.owner_of_token(token) if token else None
+                if not owner or not session:
+                    return None
+                row = app.store.user_for_hermes_session(session)
+                return row if row and row["login"] == owner else None
             if not app.service_token or not hmac.compare_digest(token, app.service_token):
                 return None
-            session = self.headers.get("X-Hermes-Session", "")
             return app.store.user_for_hermes_session(session) if session else None
 
         def _internal_engagements(self) -> None:
@@ -506,6 +538,11 @@ def start_trigger(app: App, interval_s: float = 30.0) -> threading.Thread:
 
 def run_due_engagement(app: App, engagement: dict) -> None:
     conv = app.store.conversation_for(engagement["user_id"])
+    owner = app.store.user_by_id(engagement["user_id"])
+    hermes = app.hermes_for(owner["login"]) if owner else None
+    if hermes is None:
+        app.store.release_engagement(engagement["id"], "planifie")
+        return
     prompt = (
         "Échéance atteinte. Engagement enregistré :\n"
         f"- client : {engagement['client']}\n- sujet : {engagement['subject']}\n"
@@ -516,7 +553,7 @@ def run_due_engagement(app: App, engagement: dict) -> None:
     try:
         # La clé porte la session (aléatoire, propre au compte) et le numéro de tentative : un numéro de
         # ligne seul peut être réattribué par SQLite, et une nouvelle tentative doit relancer une exécution.
-        run_id = app.hermes.start_run(
+        run_id = hermes.start_run(
             prompt, conv["hermes_session_id"],
             f"arpagona-{conv['hermes_session_id']}-echeance-{engagement['id']}-{engagement['attempts']}")
     except HermesError:
@@ -525,7 +562,7 @@ def run_due_engagement(app: App, engagement: dict) -> None:
     deadline = time.time() + 240
     while time.time() < deadline:
         try:
-            status = app.hermes.run_status(run_id)
+            status = hermes.run_status(run_id)
         except HermesError:
             time.sleep(5)
             continue
@@ -555,6 +592,9 @@ def main() -> None:
         kanban_token = Path(kanban_file).read_text(encoding="ascii").strip()
         if kanban_token:
             app.kanban = KanbanClient(kanban_token, os.environ.get("ARPAGONA_KANBAN_URL", "http://127.0.0.1:8701"))
+    registry_file = os.environ.get("ARPAGONA_AGENTS_FILE", "")
+    if registry_file:
+        app.agents = AgentRegistry.load(registry_file)
     start_trigger(app, float(os.environ.get("ARPAGONA_TRIGGER_INTERVAL", "30")))
     server = ThreadingHTTPServer((host, port), make_handler(app))
     server.daemon_threads = True

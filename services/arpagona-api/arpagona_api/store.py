@@ -374,6 +374,9 @@ class Store:
     def set_delivery_note(self, draft_id: int, note: str) -> None:
         self._run("UPDATE drafts SET delivery = ? WHERE id = ?", (note, draft_id))
 
+    def user_by_id(self, user_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM users WHERE id = ?", (user_id,))
+
     def user_for_hermes_session(self, hermes_session_id: str) -> sqlite3.Row | None:
         return self._one("SELECT u.* FROM conversations c JOIN users u ON u.id = c.user_id"
                          " WHERE c.hermes_session_id = ?", (hermes_session_id,))

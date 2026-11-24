@@ -1,0 +1,7 @@
+name: arpagona-mail
+version: 0.1.0
+description: "Agent de messagerie personnel sur boîte fictive (Maildir) : lire, brouillonner, jamais envoyer."
+author: ARPAGONA
+kind: standalone
+platforms:
+  - linux

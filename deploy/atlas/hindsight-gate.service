@@ -1,0 +1,32 @@
+[Unit]
+Description=Portier Hindsight ARPAGONA (une banque de mémoire par utilisateur, banc de test)
+After=hindsight-arpagona.service
+Wants=hindsight-arpagona.service
+
+[Service]
+Type=simple
+User=hindsight-gate
+Group=hindsight-gate
+ExecStart=/usr/bin/python3 /opt/arpagona/current/services/hindsight-gate/gate.py /etc/hindsight-gate/gate.json
+Environment=PYTHONDONTWRITEBYTECODE=1
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+InaccessiblePaths=/srv /etc/arpagona-api /var/lib/arpagona-api /etc/agentcore /var/lib/agentcore /var/backups/agentcore
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=256M
+TasksMax=128
+
+[Install]
+WantedBy=multi-user.target

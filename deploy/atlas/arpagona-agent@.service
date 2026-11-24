@@ -1,0 +1,30 @@
+[Unit]
+Description=Agent personnel ARPAGONA de %i (Hermes officiel, profil et compte Unix propres, banc de test)
+After=network-online.target hindsight-gate.service
+Wants=network-online.target hindsight-gate.service
+
+[Service]
+Type=simple
+User=agent-%i
+Group=agent-%i
+WorkingDirectory=/srv/agents/%i
+Environment=HOME=/srv/agents/%i
+Environment=HERMES_HOME=/srv/agents/%i/.hermes
+Environment=PYTHONDONTWRITEBYTECODE=1
+# Le code d'Hermès est partagé en LECTURE SEULE (droits ACL du groupe hermes-core) ; l'état est ici, propre au compte.
+ExecStart=/srv/hermes-arpagona/.hermes/hermes-agent/.hermes/bin/hermes gateway run
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/srv/agents/%i
+InaccessiblePaths=/etc/agentcore /var/lib/agentcore /var/backups/agentcore /etc/arpagona-api /var/lib/arpagona-api /etc/hindsight-gate /etc/hindsight-arpagona /srv/hindsight-arpagona
+MemoryMax=1500M
+CPUQuota=100%
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target
