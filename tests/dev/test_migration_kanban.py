@@ -19,8 +19,8 @@ class FakeCli:
         who = cmd[cmd.index("-u") + 1]
         verb = cmd[cmd.index("kanban") + 1]
         if verb == "list":
-            data = self.company if who == "hermes-arpagona" else self.personal[who.removeprefix("agent-")]
-            return subprocess.CompletedProcess(cmd, 0, json.dumps(data), "")
+            assert who == "hermes-arpagona", "l'ancien tableau personnel est lu en SQLite, jamais par la CLI"
+            return subprocess.CompletedProcess(cmd, 0, json.dumps(self.company), "")
         assert who == "hermes-arpagona", "les anciens tableaux personnels ne sont jamais modifiés"
         if verb == "create":
             key = next(a for a in cmd if a.startswith("--idempotency-key=")).split("=", 1)[1]
@@ -43,7 +43,7 @@ class MigrationTest(unittest.TestCase):
 
     def run_migration(self):
         cli = FakeCli(self.personal, self.company)
-        return migre.migrate("/cli", "/home/legacy", ["mael", "thibaud"], cli), cli
+        return migre.migrate("/cli", "/home/legacy", ["mael", "thibaud"], cli, reader=lambda login: self.personal[login]), cli
 
     def test_reprise_complete_puis_rejeu_sans_doublon(self):
         report, cli = self.run_migration()
@@ -61,7 +61,26 @@ class MigrationTest(unittest.TestCase):
 
     def test_compte_invalide_refuse(self):
         with self.assertRaises(ValueError):
-            migre.migrate("/cli", "/h", ["Mael;rm"], FakeCli({}, []))
+            migre.migrate("/cli", "/h", ["Mael;rm"], FakeCli({}, []), reader=lambda login: [])
+
+    def test_lecture_sqlite_en_lecture_seule(self):
+        import sqlite3, tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            db = Path(tmp) / "kanban.db"
+            con = sqlite3.connect(db)
+            con.execute("CREATE TABLE tasks (id TEXT, title TEXT, body TEXT, status TEXT)")
+            con.execute("INSERT INTO tasks VALUES ('t_1','Titre','Corps','ready')")
+            con.commit(); con.close()
+            before = db.read_bytes()
+            real = migre.sqlite3.connect
+            migre.sqlite3.connect = lambda target, **kw: real(target.replace("/srv/agents/mael/.hermes/kanban.db", str(db)), **kw)
+            try:
+                self.assertEqual(migre.read_personal_cards("mael"), [{"id": "t_1", "title": "Titre", "body": "Corps", "status": "ready"}])
+            finally:
+                migre.sqlite3.connect = real
+            self.assertEqual(db.read_bytes(), before)
+        with self.assertRaises(OSError):
+            migre.read_personal_cards("absent-xyz")
 
 
 if __name__ == "__main__":

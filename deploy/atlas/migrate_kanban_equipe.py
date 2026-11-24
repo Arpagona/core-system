@@ -3,8 +3,8 @@
 
     migrate_kanban_equipe.py <hermes_cli> <hermes_home_entreprise> <login> [<login> ...]
 
-Pour chaque compte, lit (en lecture seule, CLI officielle, sous son compte Unix) les cartes de son ancien
-Kanban personnel et crée la carte équivalente dans le tableau d'entreprise : responsable = le compte,
+Pour chaque compte, lit (SQLite en lecture seule, sous root : aucune écriture, aucune dépendance aux droits
+du socle Hermès) les cartes de son ancien Kanban personnel et crée la carte équivalente dans le tableau d'entreprise : responsable = le compte,
 auteur = le compte, même titre, même description, même statut (bloquée, terminée). La clé d'idempotence
 ``deux-zones-<login>-<ancien id>`` rend la reprise rejouable : une carte déjà reprise n'est jamais recréée.
 Les anciennes bases personnelles ne sont ni modifiées ni supprimées. Les cartes déjà présentes dans le
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import sqlite3
 import subprocess
 import sys
 
@@ -28,21 +29,36 @@ def run(cmd: list[str], runner=subprocess.run) -> subprocess.CompletedProcess:
     return runner(cmd, capture_output=True, text=True, timeout=60, check=False, cwd="/tmp")
 
 
-def migrate(cli: str, company_home: str, logins: list[str], runner=subprocess.run) -> dict:
+def read_personal_cards(login: str) -> list[dict]:
+    """Cartes de l'ancien Kanban personnel (lecture seule). Une base absente = aucune carte à reprendre."""
+    path = f"/srv/agents/{login}/.hermes/kanban.db"
+    try:
+        db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    except sqlite3.Error as exc:
+        raise OSError(str(exc)) from exc
+    try:
+        db.row_factory = sqlite3.Row
+        return [dict(r) for r in db.execute("SELECT id, title, body, status FROM tasks")]
+    except sqlite3.Error as exc:
+        raise OSError(str(exc)) from exc
+    finally:
+        db.close()
+
+
+def migrate(cli: str, company_home: str, logins: list[str], runner=subprocess.run, reader=read_personal_cards) -> dict:
     report = {"reprises": 0, "deja_presentes": 0, "ignorees": 0, "echecs": 0, "detail": []}
     existing = json.loads(run(["sudo", "-n", "-u", "hermes-arpagona", "env", "HOME=/srv/hermes-arpagona",
                                f"HERMES_HOME={company_home}", cli, "kanban", "list", "--json"], runner).stdout or "[]")
     for login in logins:
         if not LOGIN.fullmatch(login):
             raise ValueError(f"compte invalide : {login}")
-        own = ["sudo", "-n", "-u", f"agent-{login}", "env", f"HOME=/srv/agents/{login}",
-               f"HERMES_HOME=/srv/agents/{login}/.hermes", cli, "kanban"]
-        listed = run(own + ["list", "--json"], runner)
-        if listed.returncode:
+        try:
+            cards = reader(login)
+        except OSError:
             report["echecs"] += 1
             report["detail"].append({"login": login, "erreur": "lecture de l'ancien Kanban impossible"})
             continue
-        for card in json.loads(listed.stdout or "[]"):
+        for card in cards:
             if card.get("status") == "archived":
                 report["ignorees"] += 1
                 continue
