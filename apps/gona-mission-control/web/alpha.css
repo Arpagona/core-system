@@ -169,3 +169,5 @@ details.column summary span{color:#9eabc4}
 /* QA 25/11 : le badge ne chevauche plus le titre de la carte (mobile) */
 .task .badge-unowned{display:block;width:max-content;max-width:100%;margin:6px 0 4px;white-space:nowrap}
 .msg .msg-note{display:block;margin-top:4px;font-size:11px;opacity:.85}
+
+/* déploiement 2026-11-25T18:49:02.386Z */

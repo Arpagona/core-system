@@ -857,6 +857,17 @@ setInterval(async()=>{
   catch(e) { $("chat-status").textContent = navigator.onLine ? e.message : "Hors ligne · reconnexion automatique…"; }
 },4000);
 setInterval(loadKanban,10000);
+// Mise à jour automatique : après un déploiement, l'écran (iMac, Android) se recharge seul, sans F5,
+// seulement quand rien n'est en cours (pas de saisie, pas d'envoi, pas de voix).
+let uiVersion = null;
+setInterval(async()=>{
+  try {
+    const v = (await (await fetch("/api/version", {cache:"no-store"})).json()).version;
+    if(!uiVersion) { uiVersion = v; return; }
+    const idle = !sending && !$("text").value.trim() && !attached.length && !(window.MCVoice && window.MCVoice.busy()) && !(stream && stream.active) && !document.querySelector("dialog[open]");
+    if(v && v !== uiVersion && idle) location.reload();
+  } catch(e) {}
+}, 30000);
 $("send").disabled = true;
 start();
 

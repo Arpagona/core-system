@@ -502,6 +502,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path in ('/', '/index.html', '/app.js', '/markdown.js', '/style.css', '/alpha.css', '/logo.png', '/voice.js', '/kiosk.js'):
             f = ROOT / 'web' / ('index.html' if u.path == '/' else u.path[1:])
             return self.send(200, f.read_bytes(), mimetypes.guess_type(f)[0] or 'text/plain')
+        if u.path == '/api/version':   # empreinte de l'interface : les écrans ouverts se rechargent seuls après un déploiement
+            h = hashlib.sha256()
+            for name in ('index.html', 'app.js', 'voice.js', 'markdown.js', 'style.css', 'alpha.css', 'kiosk.js'):
+                try: h.update((ROOT / 'web' / name).read_bytes())
+                except OSError: pass
+            return self.send(200, {'version': h.hexdigest()[:16]})
         if not self.authorized():
             return self.send(401, {'error':'Authentification requise'})
         try:
