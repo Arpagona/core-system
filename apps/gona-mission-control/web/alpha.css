@@ -94,3 +94,8 @@ details.column[open]{opacity:.85}
 .badge-unowned{display:inline-block;margin:0 0 8px;padding:2px 8px;border-radius:999px;border:1px solid #7c5cc4;background:#efe9fb;color:#4a2f8f;font-size:11px;font-weight:700;line-height:1.5}
 .task.unowned{border-left:3px solid #7c5cc4}
 @media (max-width:700px){#clock{display:none}}
+
+.model-panel{border:1px solid #3a3a3a;border-radius:10px;padding:10px;margin:6px 0;background:#111;max-height:55vh;overflow:auto}
+.model-panel .mp-head{display:flex;justify-content:space-between;align-items:center}
+.model-panel .mp-voice{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.model-panel .btn.ghost{background:none}

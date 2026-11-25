@@ -807,3 +807,32 @@ setInterval(async()=>{
 setInterval(loadKanban,10000);
 $("send").disabled = true;
 start();
+
+// Menu « ⚙ Modèle » du bas : modèle par fournisseur + options vocales, dans un panneau (hors fil).
+(function(){
+  const btn = $("modelbtn"), panel = $("model-panel"); if(!btn || !panel) return;
+  async function open() {
+    panel.hidden = false; panel.replaceChildren(node("p", "Chargement…", "hint"));
+    let out; try { out = await api("/api/command", { id: session, command: "/model" }); } catch(e) { out = { ok: false, error: e.message }; }
+    panel.replaceChildren();
+    const head = node("div", "", "mp-head"); head.append(node("strong", "Modèle & voix"));
+    const x = node("button", "✕", "btn ghost"); x.type = "button"; x.onclick = () => { panel.hidden = true; }; head.append(x); panel.append(head);
+    if(out.ok === false) panel.append(node("p", "⚠ " + (out.error || "Indisponible"), "error"));
+    else {
+      panel.append(node("p", (out.model_label || out.model || "?") + " (" + (out.provider || "?") + ")", "hint"));
+      const box = node("div", "", "mp-models"); panel.append(box); modelPicker(box, out);
+    }
+    const v = node("div", "", "mp-voice"); v.append(node("strong", "Voix"));
+    const spk = node("button", "", "btn"); spk.type = "button";
+    const paint = () => { spk.textContent = localStorage.getItem("mc_speaker") === "off" ? "🔇 Réponse en texte" : "🔊 Réponse vocale"; };
+    paint(); spk.onclick = () => { $("speakerbtn").click(); setTimeout(paint, 50); }; v.append(spk);
+    const cur = parseFloat(localStorage.getItem("mc-voice-rate")) || 1.15;
+    for(const r of [1, 1.15, 1.3, 1.5]) {
+      const b = node("button", r + "×", "btn" + (Math.abs(r - cur) < 0.01 ? " primary" : "")); b.type = "button";
+      b.onclick = () => { localStorage.setItem("mc-voice-rate", r); v.querySelectorAll(".rate").forEach(e => e.classList.remove("primary")); b.classList.add("primary"); };
+      b.classList.add("rate"); v.append(b);
+    }
+    panel.append(v);
+  }
+  btn.addEventListener("click", () => { if(panel.hidden) open(); else panel.hidden = true; });
+})();
