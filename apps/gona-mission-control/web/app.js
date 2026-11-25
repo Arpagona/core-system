@@ -6,6 +6,11 @@ addEventListener("online",()=>{const l=document.querySelector(".live"); if(l) l.
 const $ = (id) => document.getElementById(id);
 const HEADERS = { "Content-Type": "application/json", "X-Arpagona": "1", "X-Gona": "1" };
 const cmdBubbles = [];
+const attached = [];
+function paintAttached() {
+  const l = $("attach-list"); if(!l) return; l.replaceChildren();
+  attached.forEach((f, i) => { const c = node("button", (f.kind === "image" ? "🖼 " : "📄 ") + f.name + " ✕", "btn ghost"); c.type = "button"; c.onclick = () => { attached.splice(i, 1); paintAttached(); }; l.append(c); });
+}
 const CMDKEY = "mc_cmd_bubbles";
 function saveBubbles() {
   try { sessionStorage.setItem(CMDKEY, JSON.stringify(cmdBubbles.map(b => { const c = b.cloneNode(true); c.querySelectorAll("button,input,select").forEach(x => x.remove()); return c.innerHTML; }))); } catch(e) {}
@@ -112,7 +117,7 @@ async function pollReply() {
 }
 function setBusy(on, label) {
   busy = on;
-  $("send").disabled = on || !$("text").value.trim();
+  $("send").disabled = on || (!$("text").value.trim() && !attached.length);
   $("stop").hidden = !on;
   $("chat-status").textContent = label || "";
 }
@@ -408,10 +413,11 @@ $("logout").addEventListener("click", async () => {
 });
 
 $("chat-form").addEventListener("submit",async ev=>{
-  ev.preventDefault(); const text=$("text").value.trim();
-  if(!text || !session) return;
-  if(text.startsWith("/")) { await runCommand(text); return; }
+  ev.preventDefault(); let text=$("text").value.trim();
+  if((!text && !attached.length) || !session) return;
+  if(text.startsWith("/") && !attached.length) { await runCommand(text); return; }
   if(busy) return;
+  if(attached.length) text = ((text || "Voir la pièce jointe.") + "\n\n" + attached.map(x => x.ref).join("\n")).slice(0, 4000);
   const p={id:session,text,submission_id:"imac-mc-"+crypto.randomUUID(),t:Date.now()};
   sessionStorage.setItem(PENDING,JSON.stringify(p)); setBusy(true,"Envoi…");
   window.__mcTypedReply = Date.now();
@@ -425,7 +431,7 @@ $("chat-form").addEventListener("submit",async ev=>{
           session = r.session; p.id = session; sessionStorage.setItem(PENDING,JSON.stringify(p));
           closeStream(); startStream();
         }
-        $("text").value=""; if(!stream || !stream.es) startStream(); await pollReply(); }
+        $("text").value=""; attached.length = 0; paintAttached(); $("send").disabled = true; if(!stream || !stream.es) startStream(); await pollReply(); }
   catch(e) { echo.remove(); setBusy(true,e.message+" · Envoi non confirmé : ne pas renvoyer automatiquement. Consulte le fil."); }
 });
 // Commandes « / » : réponse affichée comme note de service, jamais envoyée à l'agent.
@@ -590,7 +596,7 @@ function selectCommand(command) {
 
 $("stop").addEventListener("click", () => runCommand("/stop"));
 $("text").addEventListener("input", updateCommandMenu);
-$("text").addEventListener("input", () => { if(!busy) $("send").disabled = !$("text").value.trim(); });
+$("text").addEventListener("input", () => { if(!busy) $("send").disabled = !$("text").value.trim() && !attached.length; });
 $("text").addEventListener("keydown", (ev) => {
   const menu = $("command-menu");
   if(!menu.hidden) {
@@ -835,4 +841,21 @@ start();
     panel.append(v);
   }
   btn.addEventListener("click", () => { if(panel.hidden) open(); else panel.hidden = true; });
+})();
+
+// Pièces jointes : upload borné côté serveur, la référence est ajoutée au message (comme dans Telegram).
+(function(){
+  const pick = $("filepick"), btn = $("attachbtn"); if(!pick || !btn) return;
+  btn.addEventListener("click", () => pick.click());
+  pick.addEventListener("change", async () => {
+    const f = pick.files[0]; pick.value = ""; if(!f) return;
+    if(attached.length >= 5) { setBusy(busy, "5 pièces jointes maximum."); return; }
+    setBusy(busy, "Envoi de " + f.name + "…");
+    try {
+      const res = await fetch("/api/upload", { method: "POST", headers: { "Content-Type": f.type || "application/octet-stream", "X-Arpagona": "1", "X-Gona": "1", "X-Filename": encodeURIComponent(f.name) }, body: f });
+      const d = await res.json().catch(() => ({}));
+      if(!res.ok || !d.ok) throw new Error(d.error || "Envoi du fichier refusé");
+      attached.push(d); paintAttached(); setBusy(busy, ""); $("send").disabled = false;
+    } catch(e) { setBusy(busy, "⚠ " + e.message); }
+  });
 })();

@@ -61,6 +61,41 @@ DENIED_MEDIA_NAMES = {'.env', '.ssh', '.gnupg', '.netrc', 'token', 'credentials'
                       'id_rsa', 'id_ed25519', '.git-credentials'}
 
 
+UPLOAD_DIR = PROFILE / 'cache' / 'documents' / 'mc-uploads'
+UPLOAD_MAX = 10_000_000
+TEXT_EXT = {'.txt', '.md', '.csv', '.tsv', '.json', '.log', '.py', '.yaml', '.yml', '.xml', '.html', '.ini', '.toml', '.sh', '.js', '.css', '.sql', '.tex', '.rtf'}
+
+
+def store_upload(data, filename):
+    """Pièce jointe : type détecté sur les octets, copie privée sous un nom neuf, chemin renvoyé au client
+    uniquement comme texte pour l'agent (jamais relu comme chemin par ce serveur)."""
+    if not 0 < len(data) <= UPLOAD_MAX:
+        raise ValueError('Fichier vide ou trop gros (10 Mo max)')
+    ext = None
+    if data[:8] == b'\x89PNG\r\n\x1a\n': ext, kind = '.png', 'image'
+    elif data[:3] == b'\xff\xd8\xff': ext, kind = '.jpg', 'image'
+    elif data[:6] in (b'GIF87a', b'GIF89a'): ext, kind = '.gif', 'image'
+    elif data[:4] == b'RIFF' and data[8:12] == b'WEBP': ext, kind = '.webp', 'image'
+    elif data[:5] == b'%PDF-': ext, kind = '.pdf', 'document'
+    else:
+        want = Path(filename or '').suffix.lower()
+        if want not in TEXT_EXT or b'\x00' in data[:8192]:
+            raise ValueError('Type non pris en charge (images, PDF, texte)')
+        try:
+            data.decode('utf-8')
+        except UnicodeDecodeError:
+            raise ValueError('Texte UTF-8 requis')
+        ext, kind = want, 'document'
+    safe = re.sub(r'[^A-Za-z0-9._-]+', '_', Path(filename or 'fichier').stem)[:40] or 'fichier'
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = UPLOAD_DIR / (time.strftime('%Y%m%d-%H%M%S-') + os.urandom(4).hex() + '-' + safe + ext)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    label = '[Image attached at: %s]' if kind == 'image' else '[Document attached at: %s]'
+    return {'ok': True, 'kind': kind, 'name': safe + ext, 'ref': label % path}
+
+
 def read_kanban(ident=None):
     # Default board = kanban.db ; les autres boards ont un fichier distinct.
     with closing(sqlite3.connect(KANBAN_DB.resolve().as_uri() + '?mode=ro', uri=True, timeout=5)) as c:
@@ -457,6 +492,14 @@ class Handler(BaseHTTPRequestHandler):
             origin = self.headers.get('Origin')
             if origin and origin != 'http://' + self.headers.get('Host',''):
                 return self.send(403, {'error':'Origine refusée'})
+            if self.path == '/api/upload':
+                if not self.authorized():
+                    return self.send(401, {'error':'Authentification requise'})
+                n = int(self.headers.get('Content-Length','0'))
+                if not 0 < n <= UPLOAD_MAX:
+                    return self.send(413, {'error':'Fichier vide ou trop gros (10 Mo max)'})
+                from urllib.parse import unquote
+                return self.send(200, store_upload(self.rfile.read(n), unquote(self.headers.get('X-Filename',''))))
             if self.path in ('/api/voice/transcribe', '/api/voice/speak'):
                 if not self.authorized():
                     return self.send(401, {'error':'Authentification requise'})

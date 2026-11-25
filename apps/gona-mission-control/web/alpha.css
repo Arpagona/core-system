@@ -99,3 +99,6 @@ details.column[open]{opacity:.85}
 .model-panel .mp-head{display:flex;justify-content:space-between;align-items:center}
 .model-panel .mp-voice{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 .model-panel .btn.ghost{background:none}
+
+.attach-list{display:flex;flex-wrap:wrap;gap:4px;margin-right:auto}
+.attach-list .btn{font-size:12px;padding:4px 8px}
