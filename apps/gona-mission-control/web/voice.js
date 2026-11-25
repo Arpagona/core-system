@@ -166,6 +166,8 @@
       const url = URL.createObjectURL(await r.blob());
       if (id !== gen) { URL.revokeObjectURL(url); return; }
       player.src = url;
+      player.preservesPitch = true;   // voix plus rapide sans la rendre aiguë
+      player.playbackRate = parseFloat(localStorage.getItem("mc-voice-rate")) || 1.3;
       player.onended = () => { URL.revokeObjectURL(url); if (id === gen) show("idle", "Réponse lue · maintiens 🎙 pour reparler"); };
       player.onerror = () => { URL.revokeObjectURL(url); if (id === gen) show("idle", "Lecture audio impossible · réponse dans le fil"); };
       await player.play();
