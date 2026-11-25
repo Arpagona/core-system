@@ -9,7 +9,7 @@ import time
 from http import HTTPStatus
 from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -35,17 +35,65 @@ LOGIN_LOCK_S = 60
 
 class App:
     def __init__(self, store: Store, hermes: HermesClient, static_dir: Path, cookie_secure: bool,
-                 service_token: str = ""):
+                 service_token: str = "", session_idle_minutes: int = 240, session_daily_hour: int = 4,
+                 now=time.time):
         self.store = store
         self.hermes = hermes
         self.static_dir = static_dir.resolve()
         self.cookie_secure = cookie_secure
         self.service_token = service_token
+        if session_idle_minutes < 0 or not -1 <= session_daily_hour <= 23:
+            raise ValueError("politique de rotation invalide")
+        self.session_idle_minutes = session_idle_minutes
+        self.session_daily_hour = session_daily_hour
+        self.now = now
+        self.chat_lock = threading.Lock()
         self.kanban: KanbanClient | None = None
         # Registre d'agents personnels : s'il est chargé, chaque compte n'atteint QUE son propre agent.
         self.agents: AgentRegistry | None = None
         self._fails: dict[str, tuple[int, float]] = {}
         self._fails_lock = threading.Lock()
+
+    def rotation_reason(self, conv) -> str | None:
+        messages = self.store.messages(conv["id"])
+        done = [m for m in messages if m["status"] == "done"]
+        if not done:
+            return None
+        last = max(m["created_at"] for m in done)
+        now = self.now()
+        if self.session_idle_minutes and now - last >= self.session_idle_minutes * 60:
+            return "idle"
+        if self.session_daily_hour >= 0:
+            local = datetime.fromtimestamp(now, DISPLAY_TZ)
+            boundary = local.replace(hour=self.session_daily_hour, minute=0, second=0, microsecond=0)
+            if boundary.timestamp() > now:
+                boundary = (local - timedelta(days=1)).replace(hour=self.session_daily_hour, minute=0, second=0, microsecond=0)
+            if last < boundary.timestamp():
+                return "daily"
+        return None
+
+    def handoff(self, conv) -> str | None:
+        if not conv["parent_id"]:
+            return None
+        parent = self.store.conversation_by_id(conv["parent_id"], conv["user_id"])
+        if not parent or parent["closed_reason"] not in ("idle", "daily"):
+            return None
+        if any(m["role"] == "assistant" and m["run_id"] for m in self.store.messages(conv["id"])):
+            return None
+        opened = datetime.fromtimestamp(parent["created_at"], DISPLAY_TZ).strftime("%d/%m %H:%M")
+        reason = "après inactivité" if parent["closed_reason"] == "idle" else "à la frontière quotidienne"
+        header = (f"Reprise de conversation : la session précédente (ouverte le {opened}, close {reason}) est archivée. "
+                  "Derniers échanges, du plus ancien au plus récent, pour reprendre le fil sans le redemander à l'utilisateur. "
+                  "Ne mentionne pas ce changement de session sauf si on te le demande.")
+        lines = []
+        for m in [m for m in self.store.messages(parent["id"]) if m["status"] == "done"][-8:]:
+            text = m["content"]
+            if len(text) > 600:
+                text = text[:599] + "…"
+            lines.append(("Utilisateur : " if m["role"] == "user" else "Agent : ") + text)
+        while lines and len(header) + 1 + len("\n".join(lines)) > 4000:
+            lines.pop(0)
+        return header + ("\n" + "\n".join(lines) if lines else "")
 
     # --- limitation des essais de connexion -------------------------------
     def login_locked(self, login: str) -> bool:
@@ -317,14 +365,15 @@ def make_handler(app: App):
             user = self._user()
             if not user:
                 return self._json(401, {"error": "non connecté"})
-            conv = app.store.conversation_for(user["id"])
-            hermes = app.hermes_for(user["login"])
-            for row in app.store.messages(conv["id"]):
-                if row["status"] == "pending" and hermes is not None:
-                    app.settle_from_engine(row["id"], row["run_id"], hermes)
-            rows = app.store.messages(conv["id"])
+            with app.chat_lock:
+                conv = app.store.conversation_for(user["id"])
+                hermes = app.hermes_for(user["login"])
+                for row in app.store.messages(conv["id"]):
+                    if row["status"] == "pending" and hermes is not None:
+                        app.settle_from_engine(row["id"], row["run_id"], hermes)
+                rows = app.store.visible_messages(conv)
             self._json(200, {"messages": [
-                {"id": r["id"], "role": r["role"], "text": r["content"], "status": r["status"], "at": r["created_at"]}
+                {"id": r["id"], "role": r["role"], "text": r["content"], "status": r["status"], "at": r["created_at"], "conversation": r["conversation_id"]}
                 for r in rows]})
 
         def _chat(self) -> None:
@@ -339,21 +388,36 @@ def make_handler(app: App):
             if app.store.has_pending(conv["id"]):
                 return self._json(409, {"error": "une réponse est déjà en cours"})
             if text.startswith("/"):
-                return self._command(user, conv, text)
+                with app.chat_lock:
+                    conv = app.store.conversation_for(user["id"])
+                    if app.store.has_pending(conv["id"]):
+                        return self._json(409, {"error": "une réponse est déjà en cours"})
+                    return self._command(user, conv, text)
             hermes = app.hermes_for(user["login"])
             if hermes is None:
                 app.store.audit(user["id"], "chat_refusé_sans_agent", user["login"])
                 return self._json(503, {"error": "aucun agent personnel n'est configuré pour ce compte"})
-            app.store.add_message(conv["id"], "user", text)
-            answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending")
-            try:
-                run_id = hermes.start_run(text, conv["hermes_session_id"],
-                                              f"arpagona-{conv['hermes_session_id']}-msg-{answer_id}")
-            except HermesError as exc:
-                app.store.settle_message(answer_id, "Le moteur est indisponible.", "failed")
-                app.store.audit(user["id"], "chat_échec", str(exc))
-                return self._json(502, {"error": "moteur indisponible"})
-            app.store.set_run_id(answer_id, run_id)
+            with app.chat_lock:
+                conv = app.store.conversation_for(user["id"])
+                if app.store.has_pending(conv["id"]):
+                    return self._json(409, {"error": "une réponse est déjà en cours"})
+                reason = app.rotation_reason(conv)
+                if reason:
+                    old_id = conv["id"]
+                    conv = app.store.new_conversation(user["id"], reason, app.now())
+                    app.store.audit(user["id"], "rotation_session", f"{reason} {old_id} -> {conv['id']}")
+                instructions = app.handoff(conv)
+                app.store.add_message(conv["id"], "user", text, created_at=app.now())
+                answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending", created_at=app.now())
+                try:
+                    run_id = hermes.start_run(text, conv["hermes_session_id"],
+                                              f"arpagona-{conv['hermes_session_id']}-msg-{answer_id}",
+                                              instructions=instructions)
+                except HermesError as exc:
+                    app.store.settle_message(answer_id, "Le moteur est indisponible.", "failed")
+                    app.store.audit(user["id"], "chat_échec", str(exc))
+                    return self._json(502, {"error": "moteur indisponible"})
+                app.store.set_run_id(answer_id, run_id)
             app.store.audit(user["id"], "chat", f"message {answer_id}")
 
             self._headers(200, "text/event-stream; charset=utf-8", None,
@@ -404,16 +468,16 @@ def make_handler(app: App):
                           "La mémoire d'équipe et vos engagements sont conservés.")
                 app.store.audit(user["id"], "commande", "/new")
             elif name == "/status":
-                app.store.add_message(conv["id"], "user", text)
+                app.store.add_message(conv["id"], "user", text, created_at=app.now())
                 answer = self._status_text(user, conv)
                 app.store.audit(user["id"], "commande", "/status")
             elif name == "/help":
-                app.store.add_message(conv["id"], "user", text)
+                app.store.add_message(conv["id"], "user", text, created_at=app.now())
                 answer = COMMANDS_HELP
             else:
-                app.store.add_message(conv["id"], "user", text)
+                app.store.add_message(conv["id"], "user", text, created_at=app.now())
                 answer = f"Commande inconnue : {name}. " + COMMANDS_HELP
-            answer_id = app.store.add_message(conv["id"], "assistant", answer)
+            answer_id = 0 if reset else app.store.add_message(conv["id"], "assistant", answer, created_at=app.now())
             payload = b"".join(
                 b"data: " + json.dumps(event, ensure_ascii=False).encode("utf-8") + b"\n\n"
                 for event in ({"type": "start", "id": answer_id},
@@ -431,9 +495,15 @@ def make_handler(app: App):
             hermes = app.hermes_for(user["login"])
             engine = ("AUCUN AGENT PERSONNEL" if hermes is None
                       else "joignable" if hermes.healthy() else "INJOIGNABLE")
+            policies = []
+            if app.session_idle_minutes:
+                policies.append(f"après {app.session_idle_minutes} min d'inactivité")
+            if app.session_daily_hour >= 0:
+                policies.append(f"chaque jour à {app.session_daily_hour}h (Paris)")
             return "\n".join([
+                "Rotation auto : " + (" ou ".join(policies) if policies else "désactivée"),
                 f"Compte : {user['display_name']} ({user['login']})",
-                f"Conversation ouverte depuis le {started} : {len(messages)} message(s)",
+                f"Conversation ouverte depuis le {started} : {len(messages) + 1} message(s)",
                 f"Conversations au total : {app.store.conversation_count(user['id'])}",
                 f"Session moteur : …{conv['hermes_session_id'][-6:]}",
                 f"Moteur Hermès : {engine}",
@@ -628,7 +698,9 @@ def main() -> None:
     port = int(os.environ.get("ARPAGONA_PORT", "8700"))
     hermes = HermesClient(os.environ.get("ARPAGONA_HERMES_URL", "http://127.0.0.1:8642"),
                           Path(key_file).read_text(encoding="ascii").strip())
-    app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1")
+    app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1",
+              session_idle_minutes=int(os.environ.get("ARPAGONA_SESSION_IDLE_MINUTES", "240")),
+              session_daily_hour=int(os.environ.get("ARPAGONA_SESSION_DAILY_HOUR", "4")))
     token_file = os.environ.get("ARPAGONA_SERVICE_TOKEN_FILE", "")
     app.service_token = Path(token_file).read_text(encoding="ascii").strip() if token_file else ""
     kanban_file = os.environ.get("ARPAGONA_KANBAN_TOKEN_FILE", "")

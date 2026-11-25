@@ -1,0 +1,12 @@
+name: session-lifecycle
+label: Sessions propres (rotation + passation)
+kind: standalone
+version: 0.1.0
+description: >
+  Tourne la conversation au premier message après une longue inactivité ou après
+  la frontière quotidienne (chemin natif du /new), puis injecte au premier tour un
+  bloc de reprise déterministe tiré de la session précédente. Aucun minuteur.
+author: ARPAGONA (rotation reprise de hermes-session-reset-policy, MIT)
+provides_hooks:
+  - pre_gateway_dispatch
+  - pre_llm_call

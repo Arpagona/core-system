@@ -28,8 +28,15 @@ async function loadConversation() {
   if (res.status === 401) { show("login"); return; }
   const data = await res.json();
   $("log").replaceChildren();
-  let pending = false;
+  let pending = false, previous = null;
   for (const m of data.messages) {
+    if (previous !== null && previous !== m.conversation) {
+      const separator = document.createElement("div");
+      separator.className = "session-break";
+      separator.textContent = "nouvelle session · contexte repris";
+      $("log").appendChild(separator);
+    }
+    previous = m.conversation;
     if (m.status === "pending") { pending = true; addMessage(m.role, "…", m.status); }
     else addMessage(m.role, m.text, m.status);
   }
@@ -98,7 +105,7 @@ $("chat-form").addEventListener("submit", async (ev) => {
   setBusy(true, "L’agent prépare…");
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
-  let buffer = "", ended = false;
+  let buffer = "";
   try {
     for (;;) {
       const { value, done } = await reader.read();
@@ -113,16 +120,14 @@ $("chat-form").addEventListener("submit", async (ev) => {
         else if (ev.type === "tool" && ev.state === "started") { $("chat-status").textContent = "L’agent prépare…"; }
         else if (ev.type === "tool") { $("chat-status").textContent = "L’agent prépare…"; }
         else if (ev.type === "end") {
-          ended = true;
           body.textContent = ev.text || body.textContent;
           if (ev.status === "failed") bubble.classList.add("failed");
-          if (ev.reset) loadConversation();  // /new : afficher le fil neuf
         }
         $("log").scrollTop = $("log").scrollHeight;
       }
     }
   } catch (err) { /* flux coupé : l'état réel est relu ci-dessous */ }
-  if (ended) setBusy(false); else loadConversation();
+  await loadConversation();
 });
 
 $("text").addEventListener("keydown", (ev) => {

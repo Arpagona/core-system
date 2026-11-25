@@ -26,6 +26,8 @@ class FakeEngine:
         self.runs = {}
         self.sessions = []
         self.keys = []
+        self.instructions = []
+        self.fail_next = False
         engine = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -44,10 +46,14 @@ class FakeEngine:
                 if self.headers.get("Authorization") != "Bearer cle-de-test":
                     return self._send(401, {})
                 data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if engine.fail_next:
+                    engine.fail_next = False
+                    return self._send(503, {})
                 run_id = f"run_{len(engine.runs) + 1}"
                 engine.runs[run_id] = "écho : " + data["input"]
                 engine.sessions.append(data["session_id"])
                 engine.keys.append(self.headers.get("Idempotency-Key"))
+                engine.instructions.append(data.get("instructions"))
                 self._send(202, {"run_id": run_id, "status": "started"})
 
             def do_GET(self):
@@ -204,7 +210,7 @@ class ApiTest(unittest.TestCase):
         self.assertEqual((status, end["command"], end["reset"]), (200, "/new", True))
         self.assertEqual(len(self.engine.sessions), 1, "/new ne doit jamais partir au moteur")
         messages = json.loads(alice.call("GET", "/api/conversation")[1])["messages"]
-        self.assertEqual([m["role"] for m in messages], ["assistant"])
+        self.assertEqual(messages, [])
         self.assertNotIn("premier fil", json.dumps(messages, ensure_ascii=False))
         alice.call("POST", "/api/chat", {"text": "second fil"})
         self.assertEqual(len(set(self.engine.sessions)), 2, "le fil neuf doit avoir sa propre session moteur")

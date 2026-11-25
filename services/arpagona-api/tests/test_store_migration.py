@@ -20,6 +20,20 @@ INSERT INTO messages VALUES (1, 7, 'user', 'bonjour', 'done', NULL, 1);
 
 
 class MigrationTest(unittest.TestCase):
+    def test_migration_schema_recent_idempotente(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = str(Path(d) / "recent.db")
+            with sqlite3.connect(path) as conn:
+                conn.executescript(OLD)
+                conn.execute("ALTER TABLE conversations ADD COLUMN closed_at REAL")
+            for _ in range(2):
+                store = Store(path)
+                conv = store.conversation_for(2)
+                self.assertIsNone(conv["closed_reason"])
+                self.assertIsNone(conv["parent_id"])
+                self.assertEqual(store.messages(7)[0]["content"], "bonjour")
+                store.close()
+
     def test_ancienne_base_migree_sans_perte(self):
         with tempfile.TemporaryDirectory() as d:
             path = str(Path(d) / "old.db")
