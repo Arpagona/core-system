@@ -23,6 +23,10 @@ class FakeHermes(http.server.BaseHTTPRequestHandler):
             FakeHermes.keys[key] = rid; FakeHermes.runs[rid] = {'input': body['input'], 'session': body['session_id'], 'status': 'running',
                                                          'instructions': body.get('instructions')}
             return self._json({'run_id': rid})
+        if self.path.endswith('/steer'):
+            run = FakeHermes.runs[self.path.split('/')[3]]
+            if run['status'] != 'running': return self._json({'error': 'no'}, 409)
+            run.setdefault('steers', []).append(body['input']); return self._json({'accepted': True})
         if self.path.endswith('/stop'):
             FakeHermes.runs[self.path.split('/')[3]]['status'] = 'cancelled'; FakeHermes.slow.set()
             return self._json({'status': 'stopping'})
@@ -37,6 +41,9 @@ class FakeHermes(http.server.BaseHTTPRequestHandler):
             ev({'event': 'message.delta', 'delta': 'Bon'})
             if run['input'].startswith('lent'):
                 FakeHermes.slow.wait(5)
+                return
+            if run['input'].startswith('budget'):
+                run['status'] = 'failed'; run['output'] = 'Bilan partiel : limite atteinte'
                 return
             ev({'event': 'message.delta', 'delta': 'jour'})
             run['status'] = 'completed'; run['output'] = 'Bonjour ' + run['input']
@@ -136,6 +143,33 @@ class ApiBackendTests(unittest.TestCase):
         self.new_backend()
         self.assertEqual(self.be.active_id(), sid); self.assertEqual(len(self.be.messages(sid)['messages']), 2)
         self.assertEqual(self.be.send(sid, 'a', 'imac-mc-00000030')['state'], 'duplicate'); self.assertEqual(FakeHermes.started, 1)
+
+    def test_failed_turn_with_output_is_shown(self):
+        sid = self.be.active_id(); self.be.send(sid, 'budget', 'imac-mc-b0000001'); self.wait(sid, 'imac-mc-b0000001')
+        self.assertEqual(self.be.messages(sid)['messages'][-1]['text'], 'Bilan partiel : limite atteinte')
+
+    def test_message_during_turn_is_steered_not_blocked(self):
+        sid = self.be.active_id(); self.be.send(sid, 'lent', 'imac-mc-s0000001')
+        end = time.time() + 5
+        while time.time() < end and not (self.be._live.get(sid) or {}).get('run_id'): time.sleep(0.05)
+        r = self.be.send(sid, 'au fait, ajoute ceci', 'imac-mc-s0000002')
+        self.assertEqual(r['state'], 'steered'); self.assertEqual(FakeHermes.started, 1)
+        self.assertEqual(FakeHermes.runs['run_1']['steers'], ['au fait, ajoute ceci'])
+        self.assertEqual(self.be.reply(sid, 'imac-mc-s0000002')['state'], 'working')
+        FakeHermes.runs['run_1']['status'] = 'completed'; FakeHermes.runs['run_1']['output'] = 'Fait, avec ton ajout'; FakeHermes.slow.set()
+        self.wait(sid, 'imac-mc-s0000001'); self.wait(sid, 'imac-mc-s0000002')
+        self.assertEqual([m['role'] for m in self.be.messages(sid)['messages']], ['user', 'user', 'assistant'])
+
+    def test_restart_resumes_running_turn(self):
+        sid = self.be.active_id(); self.be.send(sid, 'lent', 'imac-mc-c0000001')
+        end = time.time() + 5
+        while time.time() < end and not (self.be._live.get(sid) or {}).get('run_id'): time.sleep(0.05)
+        FakeHermes.runs['run_1']['status'] = 'completed'; FakeHermes.runs['run_1']['output'] = 'Réponse après redémarrage'
+        self.be._finish = lambda *a, **k: None   # l'ancien processus « meurt » : il ne conclut rien
+        self.new_backend()   # « redémarrage » pendant le tour : le nouveau serveur suit le même run, sans le relancer
+        self.wait(sid, 'imac-mc-c0000001'); FakeHermes.slow.set()
+        self.assertEqual(FakeHermes.started, 1)
+        self.assertEqual(self.be.messages(sid)['messages'][-1]['text'], 'Réponse après redémarrage')
 
     def test_unsupported_commands_honest(self):
         sid = self.be.active_id()

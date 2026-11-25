@@ -31,8 +31,11 @@ window.MC = Object.assign(window.MC || {}, {
   refresh: () => loadConversation(), busy: () => busy
 });
 async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : {method:"POST",headers:HEADERS,body:JSON.stringify(body)});
-  const data = await res.json();
+  let res;
+  try { res = await fetch(path, body === undefined ? {} : {method:"POST",headers:HEADERS,body:JSON.stringify(body)}); }
+  catch(e) { throw new Error(navigator.onLine ? "Serveur injoignable · nouvel essai automatique" : "Hors ligne · reconnexion automatique…"); }
+  // Une page d'erreur HTML (proxy, tunnel coupé) ne doit pas afficher « Unexpected token < ».
+  const data = await res.json().catch(() => ({ error: res.status >= 500 ? "Serveur momentanément indisponible (" + res.status + ")" : "Réponse illisible (" + res.status + ")" }));
   if(res.status===401) show("login");
   if(!res.ok) throw new Error(data.error || "Source indisponible");
   return data;
@@ -61,10 +64,33 @@ function addMessage(role, text, status, extra, ts) {
   return el;
 }
 
+
+// Lecture automatique (25/11) : toute nouvelle réponse finale de GONA est lue si 🔊 est actif,
+// quel que soit le chemin d'arrivée (flux, vérification du fil, Telegram). Pas de relecture de l'historique.
+let spokenKey = null;
+const norm = t => (t||"").replace(/\s+/g," ").trim().slice(0,80);
+function autoSpeak() {
+  try {
+    const a = [...(lastMessages||[])].reverse().find(m=>m.role==="assistant" && (m.text||m.content||"").trim());
+    const key = a ? (a.ts||"")+"|"+norm(a.text||a.content) : "";
+    const V = window.MCVoice;
+    if(spokenKey === null) {   // premier chargement : l'historique est marqué « déjà lu »
+      spokenKey = key;
+      if(V) (lastMessages||[]).forEach(m => m.role==="assistant" && V.seen(m.text||m.content||""));
+      return;
+    }
+    if(!a || key === spokenKey) return;
+    if(stream && stream.active) return;          // réponse encore en cours d'écriture
+    spokenKey = key;
+    if(!V || !V.enabled()) return;
+    V.say(a.text||a.content);                     // file + anti-doublon côté voix
+  } catch(e) {}
+}
 async function loadConversation(force) {
   if(!session) return;
   const data = await api("/api/channel/messages?id="+encodeURIComponent(session));
   lastMessages = data.messages || [];
+  autoSpeak();
   if(stream && stream.active && !force) return;
   const sig=JSON.stringify(data.messages);
   if($("log").dataset.signature===sig) return;
@@ -104,20 +130,25 @@ async function pollReply() {
   }
   // Garde-fou alpha (20/11) : un envoi jamais arrivé dans le fil (waiting) ou une attente sans fin ne bloque plus le chat.
   const age=Date.now()-(p.t||0);
-  if((r.state==="waiting" && age>120000) || (r.state==="working" && age>900000)) {
+  const api_mode = window.MC_BACKEND === "api";
+  if((r.state==="waiting" && age>120000) || (r.state==="working" && age>(api_mode ? 4*3600000 : 900000))) {
     sessionStorage.removeItem(PENDING);
     if(r.state==="waiting" && !$("text").value) $("text").value=p.text||"";
-    setBusy(false, r.state==="waiting" ? "Message non arrivé dans le fil : vérifie puis renvoie-le." : "Réponse longue : consulte le fil (Telegram).");
+    setBusy(false, r.state==="waiting" ? "Message non arrivé dans le fil : vérifie puis renvoie-le." : "Réponse longue : elle s’affichera dans le fil.");
     return;
   }
   if(["ready","ambiguous"].includes(r.state)) {
     sessionStorage.removeItem(PENDING);
+    // Voix : lue par autoSpeak() (chemin unique) au chargement du fil.
     setBusy(false,r.state==="ambiguous"?"Une autre intervention est intervenue ; consulte le fil.":"");
-  } else setBusy(true,"L’agent prépare…"+(window.MC_BACKEND==="api"?"":" · même fil que Telegram"));
+  } else if(!(stream && stream.active)) setBusy(true,"GONA travaille…"+(window.MC_BACKEND==="api"?"":" · même fil que Telegram"));
 }
+// Envoi toujours possible, même quand GONA travaille : le serveur ajoute le message au tour en cours
+// (comme Telegram) ou le met en file. Seul un envoi déjà en vol bloque le bouton (anti double clic).
+let sending = false, lastFailed = null;
 function setBusy(on, label) {
   busy = on;
-  $("send").disabled = on || (!$("text").value.trim() && !attached.length);
+  $("send").disabled = sending || (!$("text").value.trim() && !attached.length);
   $("stop").hidden = !on;
   $("chat-status").textContent = label || "";
 }
@@ -290,8 +321,12 @@ function handleStream(data) {
   }
   if(data.type === "tool") {
     stream.active = true;
-    const previous = finishStreamBubble();
-    if(previous && !stream.raw) previous.remove();
+    // Texte intermédiaire (« je vais vérifier… ») : jamais une bulle, une note discrète dans la trace d'outils.
+    if(stream.bubble) {
+      const interim = (stream.raw || "").replace(/\s+/g, " ").trim();
+      stream.bubble.remove();
+      if(interim) { const n = node("div", interim.length > 220 ? interim.slice(0, 220) + "…" : interim, "tool-line interim"); $("log").append(n); }
+    }
     stream.bubble = null; stream.raw = "";
     addToolLine(data.name, data.preview, false);
     setBusy(true, data.name ? "GONA utilise " + data.name + "…" : "GONA travaille…");
@@ -317,11 +352,8 @@ function handleStream(data) {
       stream.bubble.remove();
     } else if(text) addMessage("assistant", text, data.status);
     if(data.warning) addMessage("system", data.warning, "failed");
-    // Haut-parleur : lire la réponse à une question tapée ici (la voix gère ses propres réponses).
-    const typed = window.__mcTypedReply && Date.now() - window.__mcTypedReply < 30 * 60 * 1000;
-    if(typed && text && data.status !== "error" && window.MCVoice && window.MCVoice.enabled() && !window.MCVoice.busy()) {
-      window.__mcTypedReply = 0; window.MCVoice.speakText(text);
-    } else if(typed) window.__mcTypedReply = 0;
+    // Haut-parleur : lecture immédiate de la réponse finale (anti-doublon avec autoSpeak côté voix).
+    if(text && data.status !== "error" && window.MCVoice && window.MCVoice.enabled()) window.MCVoice.say(text);
     closeStream();
     setTimeout(() => loadConversation(true).catch(() => {}), 250);
     return;
@@ -416,11 +448,14 @@ $("chat-form").addEventListener("submit",async ev=>{
   ev.preventDefault(); let text=$("text").value.trim();
   if((!text && !attached.length) || !session) return;
   if(text.startsWith("/") && !attached.length) { await runCommand(text); return; }
-  if(busy) return;
-  if(attached.length) text = ((text || "Voir la pièce jointe.") + "\n\n" + attached.map(x => x.ref).join("\n")).slice(0, 4000);
-  const p={id:session,text,submission_id:"imac-mc-"+crypto.randomUUID(),t:Date.now()};
-  sessionStorage.setItem(PENDING,JSON.stringify(p)); setBusy(true,"Envoi…");
-  window.__mcTypedReply = Date.now();
+  if(sending) return;
+  if(attached.length) text = ((text || "Voir la pièce jointe.") + "\n\n" + attached.map(x => x.ref).join("\n")).slice(0, 16000);
+  // Renvoi du même texte après un échec : même clé, le serveur ne crée jamais de doublon.
+  const sid_ = lastFailed && lastFailed.text === text ? lastFailed.submission_id : "imac-mc-"+crypto.randomUUID();
+  const p={id:session,text,submission_id:sid_,t:Date.now()};
+  const wasBusy = busy;
+  sending = true; sessionStorage.setItem(PENDING,JSON.stringify(p)); setBusy(true,"Envoi…");
+  window.__mcTypedReply = Date.now(); try { window.MCVoice && window.MCVoice.unlock(); } catch(e) {}
   const echo = addMessage("user", text);
   try { let r; try { r = await api("/api/chat",p); } catch(e) {
           if(!/Session (Telegram )?active/.test(e.message) || !(await syncSession())) throw e;
@@ -431,8 +466,18 @@ $("chat-form").addEventListener("submit",async ev=>{
           session = r.session; p.id = session; sessionStorage.setItem(PENDING,JSON.stringify(p));
           closeStream(); startStream();
         }
-        $("text").value=""; attached.length = 0; paintAttached(); $("send").disabled = true; if(!stream || !stream.es) startStream(); await pollReply(); }
-  catch(e) { echo.remove(); setBusy(true,e.message+" · Envoi non confirmé : ne pas renvoyer automatiquement. Consulte le fil."); }
+        lastFailed = null; sending = false;
+        $("text").value=""; attached.length = 0; paintAttached(); $("send").disabled = true; if(!stream || !stream.es) startStream();
+        // Confirmation visible sous la bulle (la ligne d'état est réécrite par le flux en direct).
+        const note = r && r.state === "steered" ? "✓ transmis à GONA pendant son travail" : wasBusy ? "✓ en file : traité juste après" : "";
+        if(note) { echo.dataset.note = note; echo.append(node("small", note, "msg-note")); setBusy(true, (stream && stream.active) ? "GONA travaille…" : note); }
+        else await pollReply(); }
+  catch(e) {
+    // Jamais de chat verrouillé : le texte revient dans la zone de saisie, renvoi sans doublon possible.
+    sending = false; echo.remove(); lastFailed = p; sessionStorage.removeItem(PENDING);
+    if(!$("text").value.trim()) $("text").value = p.text;
+    setBusy(!!(stream && stream.active), "⚠ " + e.message + " · ton texte est resté dans la zone : renvoie-le.");
+  }
 });
 // Commandes « / » : réponse affichée comme note de service, jamais envoyée à l'agent.
 function modelPicker(box, out) {
@@ -596,7 +641,7 @@ function selectCommand(command) {
 
 $("stop").addEventListener("click", () => runCommand("/stop"));
 $("text").addEventListener("input", updateCommandMenu);
-$("text").addEventListener("input", () => { if(!busy) $("send").disabled = !$("text").value.trim() && !attached.length; });
+$("text").addEventListener("input", () => { $("send").disabled = sending || (!$("text").value.trim() && !attached.length); });
 $("text").addEventListener("keydown", (ev) => {
   const menu = $("command-menu");
   if(!menu.hidden) {
@@ -623,6 +668,7 @@ async function loadDrafts() {
   const box=$("drafts-list");
   try {
     const data=await api("/api/decisions"); box.replaceChildren();
+    if(/^\s*0 question/.test(data.text||"")) { box.append(node("p","Aucune question ouverte. Rien n’attend ta décision ✔","empty-ok")); return; }
     box.append(node("pre",data.text,"decision-text"));
     for(const m of data.text.matchAll(/^(\d+)\. /gm)) {
       const row=node("article","Question "+m[1],"card");

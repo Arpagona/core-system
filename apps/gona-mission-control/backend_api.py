@@ -78,6 +78,10 @@ class HermesClient:
     def stop(self, run_id):
         return self._json('POST', self._run_path(run_id) + '/stop', {})
 
+    def steer(self, run_id, text):
+        """Message ajouté au tour en cours (comme un message Telegram envoyé pendant que l'agent travaille)."""
+        return self._json('POST', self._run_path(run_id) + '/steer', {'input': text})
+
     def events(self, run_id):
         """Lit les champs data SSE JSON ; le serveur ferme le flux en fin de tour."""
         path = self._run_path(run_id) + '/events'
@@ -145,8 +149,17 @@ class ApiBackend:
             c.executescript(SCHEMA)
             if not c.execute('select 1 from conversations').fetchone():
                 self._new_conv(c)
-            # Reprise après redémarrage : un tour interrompu est signalé, jamais rejoué.
-            c.execute("update submissions set state='interrupted' where state in ('queued','running')")
+            # Reprise après redémarrage (25/11) : un tour déjà lancé chez Hermes est suivi jusqu'à sa réponse
+            # (jamais relancé) ; un message pas encore transmis est remis en file (clé d'idempotence = submission).
+            pending = c.execute("select submission, conv, state, run_id from submissions "
+                                "where state in ('queued','running','steered') order by created").fetchall()
+        for r in pending:
+            if r['state'] == 'steered':
+                self._set_state(r['submission'], 'done')
+            elif r['state'] == 'running' and r['run_id']:
+                self._enqueue(r['conv'], ('resume', r['submission'], r['run_id']))
+            else:
+                self._enqueue(r['conv'], ('run', r['submission'], None))
 
     # -- stockage -----------------------------------------------------------
     def _db(self):
@@ -234,7 +247,7 @@ class ApiBackend:
             r = c.execute('select state from submissions where submission=? and conv=?', (submission, sid)).fetchone()
         if r is None:
             return {'state': 'waiting'}
-        return {'state': {'queued': 'working', 'running': 'working', 'done': 'ready'}.get(r['state'], 'ready'),
+        return {'state': {'queued': 'working', 'running': 'working', 'steered': 'working', 'done': 'ready'}.get(r['state'], 'ready'),
                 'detail': r['state']}
 
     # -- envoi idempotent ----------------------------------------------------
@@ -245,14 +258,37 @@ class ApiBackend:
                 return {'ok': True, 'session': sid, 'state': 'duplicate'}
             sid, rotated = self._maybe_rotate(c, sid)
             now = time.time()
-            c.execute('insert into submissions(submission,conv,text,created) values(?,?,?,?)', (submission, sid, text, now))
+            # Agent déjà au travail : le message rejoint le tour en cours (steer), comme dans Telegram.
+            # Refus du moteur (tour en fin, pas encore lancé) : file d'attente, traité juste après.
+            run_id = (self._live.get(sid) or {}).get('run_id') if (self._live.get(sid) or {}).get('running') else None
+            steered = False
+            if run_id:
+                try:
+                    steered = bool(self.client.steer(run_id, text).get('accepted'))
+                except HermesError:
+                    steered = False
+            c.execute('insert into submissions(submission,conv,text,created,state,run_id) values(?,?,?,?,?,?)',
+                      (submission, sid, text, now, 'steered' if steered else 'queued', run_id if steered else None))
             c.execute('insert into messages(conv,role,text,ts,submission) values(?,?,?,?,?)', (sid, 'user', text, now, submission))
+            if steered:
+                self._live[sid].setdefault('steered', []).append(submission)
+            else:
+                self._enqueue(sid, ('run', submission, None))
+        if steered:
+            self._publish(sid, {'type': 'steered', 'submission': submission})
+        return {'ok': True, 'session': sid, 'state': 'steered' if steered else 'queued', 'rotated': rotated}
+
+    def _enqueue(self, sid, item):
+        with self._lock:
             q = self._workers.get(sid)
             if q is None:
                 q = self._workers[sid] = queue.Queue()
                 threading.Thread(target=self._worker, args=(sid, q), daemon=True).start()
-            q.put(submission)
-        return {'ok': True, 'session': sid, 'state': 'queued', 'rotated': rotated}
+            q.put(item)
+
+    def _set_state(self, submission, state):
+        with self._db() as c:
+            c.execute('update submissions set state=? where submission=?', (state, submission))
 
     def _publish(self, sid, event):
         with self._lock:
@@ -261,18 +297,25 @@ class ApiBackend:
 
     def _worker(self, sid, q):
         while True:
-            submission = q.get()
+            kind, submission, run_id = q.get()
             try:
-                self._run_turn(sid, submission)
+                if kind == 'resume':
+                    self._live[sid] = {'running': True, 'text': '', 'run_id': run_id}
+                    self._publish(sid, {'type': 'writing'})
+                    self._watch(sid, submission, run_id)
+                else:
+                    self._run_turn(sid, submission)
             except Exception:
                 self._finish(sid, submission, 'Le tour a échoué ; renvoie le message.', 'failed')
 
-    def _finish(self, sid, submission, text, state):
+    def _finish(self, sid, submission, text, state, steered=()):
         now = time.time()
         with self._lock, self._db() as c:
             c.execute('update submissions set state=? where submission=?', (state, submission))
+            for s in steered:   # messages ajoutés pendant le tour : répondus par ce tour
+                c.execute("update submissions set state=? where submission=? and state='steered'", (state, s))
             if text:
-                c.execute('insert into messages(conv,role,text,ts) values(?,?,?,?)', (sid, 'assistant', text, now))
+                c.execute('insert into messages(conv,role,text,ts,submission) values(?,?,?,?,?)', (sid, 'assistant', text, now, submission))
             self._live[sid] = {'running': False, 'text': '', 'run_id': None}
         self._publish(sid, {'type': 'complete', 'text': text, 'status': 'error' if state == 'failed' else (
             'interrupted' if state == 'cancelled' else 'complete')})
@@ -296,40 +339,63 @@ class ApiBackend:
             if link:
                 c.execute('update rotations set sent=1 where conv=?', (sid,))
         self._live[sid]['run_id'] = run_id
-        acc = []
+        self._watch(sid, submission, run_id)
+
+    MAX_TURN_S = 4 * 3600
+
+    def _watch(self, sid, submission, run_id):
+        """Suit un tour jusqu'à son état final. Le flux SSE sert l'affichage en direct ; s'il tombe
+        (outil silencieux > 10 min, redémarrage réseau), on continue par l'état du tour, sans limite courte."""
+        acc, allacc = [], []   # acc = texte depuis le dernier outil (réponse) ; allacc = tout (repli)
         try:
             for ev in self.client.events(run_id):
                 kind = ev.get('event', '')
                 if kind == 'message.delta':
                     d = ev.get('delta') or ev.get('text') or ''
                     if d:
-                        acc.append(d)
+                        acc.append(d); allacc.append(d)
                         self._live[sid]['text'] = ''.join(acc)
                         self._publish(sid, {'type': 'delta', 'text': d})
                 elif kind == 'tool.started':
+                    acc = []   # le texte écrit avant un outil est intermédiaire : il ne doit pas revenir au rattrapage
+                    self._live[sid]['text'] = ''
                     self._publish(sid, {'type': 'tool', 'name': str(ev.get('tool', '')), 'preview': str(ev.get('preview', ''))[:200]})
                 elif kind == 'tool.completed':
                     self._publish(sid, {'type': 'tool_done', 'name': str(ev.get('tool', '')), 'is_error': bool(ev.get('error'))})
         except HermesError:
             pass
         # L'état final vient toujours du moteur, pas du flux relayé.
-        status, output = 'unknown', ''
-        for _ in range(30):
+        st, misses, end = {}, 0, time.time() + self.MAX_TURN_S
+        while time.time() < end:
             try:
-                st = self.client.status(run_id)
+                st = self.client.status(run_id); misses = 0
             except HermesError:
-                time.sleep(1); continue
-            status = st.get('status')
-            output = str(st.get('output') or '')
-            if status in ('completed', 'failed', 'cancelled'):
+                misses += 1
+                if misses > 900:   # moteur muet ~30 min
+                    break
+                time.sleep(2); continue
+            if st.get('status') in ('completed', 'failed', 'cancelled'):
                 break
-            time.sleep(1)
+            time.sleep(self.POLL_S)
+        status, output = st.get('status', 'unknown'), str(st.get('output') or '').strip()
+        steered = list((self._live.get(sid) or {}).get('steered') or [])
+        if st.get('pending_steer') and steered:
+            # message arrivé trop tard pour ce tour : traité au tour suivant, jamais perdu
+            for s in steered:
+                self._set_state(s, 'queued'); self._enqueue(sid, ('run', s, None))
+            steered = []
         if status == 'completed':
-            self._finish(sid, submission, output or ''.join(acc), 'done')
+            self._finish(sid, submission, output or ''.join(acc) or ''.join(allacc), 'done', steered)
         elif status == 'cancelled':
-            self._finish(sid, submission, ''.join(acc) or 'Tour interrompu.', 'cancelled')
+            self._finish(sid, submission, output or ''.join(acc) or 'Tour interrompu.', 'cancelled', steered)
+        elif output:
+            # Tour arrêté par une limite (budget d'itérations, etc.) mais avec un bilan : on le montre.
+            self._finish(sid, submission, output, 'done', steered)
         else:
-            self._finish(sid, submission, 'La réponse n’a pas abouti.' if status in ('failed', 'unknown') else '', 'failed')
+            why = {'unknown': 'le moteur ne répond plus'}.get(status, str(st.get('turn_exit_reason') or st.get('error') or 'échec du moteur'))[:160]
+            self._finish(sid, submission, 'La réponse n’a pas abouti (%s). Renvoie le message si besoin.' % why, 'failed', steered)
+
+    POLL_S = 2
 
     # -- flux SSE -----------------------------------------------------------
     def subscribe(self, sid):

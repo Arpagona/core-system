@@ -347,6 +347,13 @@ def valid_session(sid):
     return sid
 
 
+class UserError(ValueError):
+    """Refus lisible, renvoyé tel quel à l'interface (aucune donnée sensible)."""
+
+
+MAX_TEXT = 16000
+
+
 def ask(*args):
     p = subprocess.run(['/usr/bin/python3', str(ASK), *args], capture_output=True, text=True, timeout=30)
     if p.returncode:
@@ -554,7 +561,7 @@ class Handler(BaseHTTPRequestHandler):
             if self.headers.get('X-Gona') != '1':
                 return self.send(400, {'error':'Marqueur de requête requis'})
             origin = self.headers.get('Origin')
-            if origin and origin != 'http://' + self.headers.get('Host',''):
+            if origin and origin not in ('http://' + self.headers.get('Host',''), 'https://' + self.headers.get('Host','')):
                 return self.send(403, {'error':'Origine refusée'})
             if self.path == '/api/upload':
                 if not self.authorized():
@@ -579,7 +586,7 @@ class Handler(BaseHTTPRequestHandler):
                 self.end_headers(); self.wfile.write(data)
                 return
             length = int(self.headers.get('Content-Length','0'))
-            if not 0 < length <= 32768:
+            if not 0 < length <= 131072:
                 raise ValueError('Corps invalide')
             b = json.loads(self.rfile.read(length))
             if not isinstance(b, dict):
@@ -603,10 +610,14 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == '/api/chat':
                 sid = valid_session(b.get('id'))
                 text, submission = b.get('text'), b.get('submission_id')
-                if not isinstance(text,str) or not text.strip() or len(text)>4000 or text.lstrip().startswith('/'):
-                    raise ValueError('Message invalide ou commande non prise en charge')
+                if not isinstance(text,str) or not text.strip():
+                    raise UserError('Message vide')
+                if len(text) > MAX_TEXT:
+                    raise UserError('Message trop long (%d caractères max) : découpe-le ou joins un fichier 📎' % MAX_TEXT)
+                if text.lstrip().startswith('/'):
+                    raise UserError('Commande inconnue : tape / pour voir la liste')
                 if not isinstance(submission,str) or not re.fullmatch(r'imac-mc-[a-zA-Z0-9_-]{8,80}', submission):
-                    raise ValueError('Clé stable requise')
+                    raise UserError('Clé d’envoi invalide : recharge la page')
                 rotated = None
                 if not API:
                     sid, rotated = rotate_if_due(sid)
@@ -663,6 +674,8 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Décision invalide')
                 return self.send(200, json.loads(ask('decide', b['target'], b['action'])))
             return self.send(404, {'error':'Opération interdite'})
+        except UserError as e:
+            self.send(400, {'error': str(e)})
         except (ValueError, TypeError) as e:
             self.send(400, {'error': 'Session active requise ; actualiser le fil' if 'Session active requise' in str(e) else 'Requête invalide'})
         except Exception:
@@ -671,6 +684,7 @@ class Handler(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', '8710'))
+    ThreadingHTTPServer.request_queue_size = 128   # iMac + Android + flux SSE + sondes : la file par défaut (5) refusait des connexions
     server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     server.daemon_threads = True
     server.serve_forever()

@@ -25,6 +25,25 @@
   const player = new Audio(); player.preload = "auto";
   const SILENT = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
   let unlocked = false;
+  // Lecture automatique fiable (25/11 soir) : une seule porte d'entrée « say », file d'attente
+  // (une réponse arrivée pendant une lecture est lue ensuite, jamais perdue) et anti-doublon par texte.
+  const said = new Set(), queue = [];
+  const keyOf = t => (t || "").replace(/\s+/g, " ").trim().slice(0, 240);
+  function remember(k) { said.add(k); if (said.size > 60) said.delete(said.values().next().value); }
+  function say(text) {
+    const k = keyOf(text);
+    if (!k || said.has(k) || queue.some(t => keyOf(t) === k)) return false;
+    if (state === "idle") { remember(k); speak(++gen, text); } else queue.push(text);
+    return true;
+  }
+  function drain() {
+    setTimeout(() => {
+      if (state !== "idle" || !queue.length || !enabled()) return;
+      const t = queue.shift(), k = keyOf(t);
+      if (said.has(k)) return drain();
+      remember(k); speak(++gen, t);
+    }, 250);
+  }
   function unlock() { if (unlocked) return; unlocked = true; try { player.src = SILENT; player.play().catch(() => {}); } catch (e) {} }
 
   function show(s, text) {
@@ -34,13 +53,14 @@
     btn.classList.toggle("rec", rec);
     btn.textContent = rec ? "● REC" : "🎙";
     btn.title = rec ? "Relâcher pour envoyer" : "Maintenir pour parler (ou Espace)";
-    btn.disabled = !["idle", "recording", "starting"].includes(s);
+    btn.disabled = ["transcribing", "sending", "stopping"].includes(s);   // jamais bloqué pendant que GONA travaille ou parle
     cancel.hidden = s === "idle";
+    if (s === "idle" && queue.length) drain();
   }
   const capturing = () => ["starting", "recording"].includes(state);
   function stopTracks() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; clearTimeout(timer); }
   function stopAll(msg) {
-    gen++; pendingRelease = false;
+    gen++; pendingRelease = false; queue.length = 0;
     if (controller) controller.abort(); controller = null;
     clearTimeout(pollTimer); pollTimer = null;
     if (recorder && recorder.state !== "inactive") { try { recorder.stop(); } catch (e) {} }
@@ -52,7 +72,7 @@
   async function start() {
     if (state !== "idle") return;
     if (!window.MC || !MC.session()) { show("idle", "Conversation non chargée"); return; }
-    if (MC.busy()) { show("idle", "Un message est déjà en attente de réponse"); return; }
+    // GONA occupée : le message vocal rejoint le tour en cours (comme un message tapé), plus de refus.
     const natif = !navigator.mediaDevices?.getUserMedia && window.AndroidMic;   // appli Android : micro natif (HTTP = pas de getUserMedia)
     if (!natif && (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)) { show("idle", "Micro indisponible dans ce navigateur"); return; }
     const id = ++gen; pendingRelease = false;
@@ -110,12 +130,12 @@
     } catch (e) { if (id === gen) show("idle", "Transcription impossible · rien n’a été envoyé"); return; }
     finally { if (id === gen) controller = null; }
     if (!text) { show("idle", "Aucune parole reconnue · rien n’a été envoyé"); return; }
-    if (text.startsWith("/")) text = " " + text;   // jamais une commande par la voix
+    text = text.trim(); if (text.startsWith("/")) text = "(dicté) " + text;   // jamais une commande par la voix
     show("sending", "« " + text.slice(0, 120) + " » · envoi…");
     const session = MC.session(), submission = "imac-mc-v-" + crypto.randomUUID(), t0 = Date.now();
     try {
       const r = await fetch("/api/chat", { method: "POST", headers: { ...H, "Content-Type": "application/json" },
-        body: JSON.stringify({ id: session, text: text.trim(), submission_id: submission }) });
+        body: JSON.stringify({ id: session, text, submission_id: submission }) });
       const d = await r.json();
       if (!r.ok || d.ok === false) throw new Error(d.error || "envoi refusé");
     } catch (e) {
@@ -124,9 +144,10 @@
       show("idle", "Envoi non confirmé · texte remis dans la zone de saisie, à vérifier avant renvoi");
       return;
     }
-    waitStart = Date.now(); MC.refresh().catch(() => {});
-    show("waiting", "Envoyé · GONA réfléchit… la réponse sera lue à voix haute");
-    poll(id, session, submission, text.trim(), t0);
+    // Le micro est libéré tout de suite. La réponse est lue par la lecture automatique unique (app.js),
+    // quel que soit le chemin d'arrivée : plus d'attente vocale qui bloquait le bouton 🎙.
+    MC.refresh().catch(() => {});
+    show("idle", enabled() ? "Envoyé ✓ · la réponse sera lue à voix haute" : "Envoyé ✓ · réponse en texte (🔇)");
   }
 
   // Si le gateway a mis le message en file (agent occupé), l'étiquette est perdue : on le retrouve par son texte.
@@ -149,7 +170,12 @@
       if (d.state === "waiting") { await MC.refresh().catch(() => {}); d = byText(text, t0); }
     } catch (e) { d = { state: "retry" }; }
     if (id !== gen) return;
-    if (d.state === "ready") { MC.refresh().catch(() => {}); if (enabled()) speak(id, d.text); else show("idle", "Réponse dans le fil · voix coupée (🔇)"); return; }
+    if (d.state === "ready") {
+      show("idle", enabled() ? null : "Réponse dans le fil · voix coupée (🔇)");
+      if (enabled() && d.text) say(d.text);
+      MC.refresh().catch(() => {});
+      return;
+    }
     if (d.state === "ambiguous") { show("idle", "Un autre message s’est intercalé : réponse dans le fil, non lue"); return; }
     const s = Math.round((Date.now() - waitStart) / 1000);
     show("waiting", "Envoyé · GONA " + (d.state === "waiting" ? "n’a pas encore pris le message" : "travaille") + "… " + s + " s · Échap pour ne pas lire");
@@ -157,12 +183,20 @@
   }
 
   async function speak(id, text) {
+    window.__mcSpokenText = text; remember(keyOf(text));
     show("speaking", "Préparation de la voix…"); controller = new AbortController();
     try {
-      const r = await fetch("/api/voice/speak", { method: "POST", signal: controller.signal,
+      let r = await fetch("/api/voice/speak", { method: "POST", signal: controller.signal,
         headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
       if (id !== gen) return;
-      if (!r.ok) throw new Error("synthèse");
+      if (!r.ok) {   // une relance : la synthèse distante échoue parfois au premier appel
+        await new Promise(ok => setTimeout(ok, 800));
+        if (id !== gen) return;
+        r = await fetch("/api/voice/speak", { method: "POST", signal: controller.signal,
+          headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+        if (id !== gen) return;
+        if (!r.ok) throw new Error("synthèse");
+      }
       const url = URL.createObjectURL(await r.blob());
       if (id !== gen) { URL.revokeObjectURL(url); return; }
       player.src = url;
@@ -170,8 +204,15 @@
       player.playbackRate = parseFloat(localStorage.getItem("mc-voice-rate")) || 1.15;
       player.onended = () => { URL.revokeObjectURL(url); if (id === gen) show("idle", "Réponse lue · maintiens 🎙 pour reparler"); };
       player.onerror = () => { URL.revokeObjectURL(url); if (id === gen) show("idle", "Lecture audio impossible · réponse dans le fil"); };
-      await player.play();
       show("speaking", "🔊 Lecture de la réponse · Échap pour couper");
+      try { await player.play(); }
+      catch (err) {   // autoplay refusé : on garde le son prêt, il part au prochain toucher/clic
+        if (err.name !== "NotAllowedError") throw err;
+        show("speaking", "🔊 Touche l’écran pour entendre la réponse");
+        const resume = () => { document.removeEventListener("pointerdown", resume, true); document.removeEventListener("keydown", resume, true);
+          if (id === gen) player.play().then(() => show("speaking", "🔊 Lecture de la réponse · Échap pour couper")).catch(() => show("idle", "Lecture audio impossible · réponse dans le fil")); };
+        document.addEventListener("pointerdown", resume, true); document.addEventListener("keydown", resume, true);
+      }
     } catch (e) {
       if (id === gen) show("idle", e.name === "NotAllowedError" ? "Lecture automatique bloquée · réponse dans le fil" : "Voix indisponible · réponse dans le fil");
     } finally { if (id === gen) controller = null; }
@@ -186,13 +227,15 @@
     });
   }
   window.MCVoice = {
-    enabled, busy: () => state !== "idle",
-    speakText: text => { if (state !== "idle") return; unlock(); const id = ++gen; speak(id, text); }
+    enabled, busy: () => state !== "idle", unlock, state: () => state,
+    say: text => enabled() && say(text),
+    seen: text => remember(keyOf(text)),          // historique déjà affiché : jamais relu
+    speakText: text => enabled() && say(text)
   };
 
   btn.addEventListener("pointerdown", e => {
     e.preventDefault(); unlock();
-    if (state === "speaking") stopAll();
+    if (state === "speaking" || state === "waiting") stopAll();
     if (state === "idle") { try { btn.setPointerCapture(e.pointerId); } catch (_) {} start(); }
   });
   ["pointerup", "pointercancel"].forEach(ev => btn.addEventListener(ev, () => { if (capturing()) finish(); }));

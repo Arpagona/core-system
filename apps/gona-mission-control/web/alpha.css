@@ -104,3 +104,68 @@ details.column[open]{opacity:.85}
 .attach-list .btn{font-size:12px;padding:4px 8px}
 
 .msg-file{display:inline-block;margin:4px 0;padding:6px 10px;border:1px solid #4cd7f6;border-radius:8px;color:#4cd7f6;text-decoration:none}
+
+/* Bulles plus tranchées (25/11) : moi = canard saturé, GONA = marine profond */
+.msg.user{background:#0a7a92;border-color:#1fb8d4;color:#fff}
+.msg.assistant{background:#0a1736;border-color:#2a3f78}
+.msg.user a{color:#fff;text-decoration:underline}
+
+
+/* ===== Robustesse multi-écrans (25/11 soir) ===== */
+/* Composeur : jamais de bouton hors cadre. Icônes compactes, « Envoyer » toujours visible. */
+.composer-bottom{flex-wrap:wrap;row-gap:8px}
+.composer-actions{flex:1 1 auto;flex-wrap:wrap;justify-content:flex-end;min-width:0;max-width:100%}
+.composer-actions .btn{min-height:44px;padding:8px 12px;white-space:nowrap}
+.composer-actions #attachbtn,.composer-actions #speakerbtn,.composer-actions #voicebtn,.composer-actions #voicecancel{width:44px;min-width:44px;padding:0;display:inline-flex;align-items:center;justify-content:center;font-size:1.1rem}
+.composer-actions #send{min-width:104px;font-weight:700}
+.composer-actions .btn[hidden]{display:none!important}
+@media (max-width:1500px){ .composer-actions #modelbtn{font-size:0;width:44px;min-width:44px;padding:0} .composer-actions #modelbtn::before{content:"⚙";font-size:1.1rem} }
+/* Chat : bulles lisibles, horodatage discret, défilement sans à-coup */
+.log{overscroll-behavior:contain;scroll-behavior:auto}
+.msg{overflow-wrap:anywhere}
+.msg-time{display:block;text-align:right;font-size:11px;opacity:.65;margin-top:4px}
+.status{min-height:20px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Kanban : en-têtes de colonnes homogènes (Terminé compris) */
+details.column summary{font-family:inherit;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#d5dded;margin:4px 0 16px;font-weight:600}
+details.column summary span{color:#9eabc4}
+.empty-ok{font-size:15px;color:#3ecf8e;margin:12px 0}
+/* Bandeau : le nom ne casse plus la ligne */
+#who-name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:22ch}
+
+/* Tablette et téléphone (≤ 1000 px) : un onglet = un écran plein, Kanban accessible */
+@media (max-width:1000px){
+  .mobile-tab{display:block}
+  .workspace{display:block}
+  .chat,.page,.kanban{height:calc(100dvh - 190px);min-height:420px}
+  .kanban{display:none}
+  .layout[data-view=kanban] .kanban{display:flex}
+  .layout[data-view=kanban] .chat{display:none}
+  .gate{max-height:24vh}
+  /* Kanban mobile : colonnes côte à côte, défilement horizontal aimanté, chaque colonne défile seule */
+  .board{display:flex!important;gap:10px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;min-height:0;flex:1 1 0;padding-bottom:6px}
+  .board>.column{flex:0 0 min(84%,340px);scroll-snap-align:start;overflow-y:auto;max-height:100%;min-height:0}
+}
+@media (max-width:720px){
+  #who-name{display:none}
+  .bar-right{gap:8px}
+  #who{gap:6px}
+  .layout{padding:10px 8px 0}
+  .chat,.page,.kanban{height:calc(100dvh - 150px);min-height:380px;padding:12px}
+  nav{margin-bottom:8px}
+  .composer{padding:8px}
+  .composer textarea{min-height:52px}
+  .composer-actions{gap:6px}
+  .composer-actions #send{flex:1 1 auto;min-width:92px}
+  .msg{max-width:92%}
+  footer{display:none}
+  .kanban .section-head{flex-wrap:wrap}
+  #tenant-filter{margin:4px 0}
+}
+
+.tool-line.interim{font-style:italic;opacity:.7}
+.tool-line.interim:before{content:"… "}
+/* Pendant un tour : Stop remplace Envoyer (désactivé de toute façon) → une seule ligne de boutons */
+.composer-actions #stop:not([hidden]) ~ #send{display:none}
+/* QA 25/11 : le badge ne chevauche plus le titre de la carte (mobile) */
+.task .badge-unowned{display:block;width:max-content;max-width:100%;margin:6px 0 4px;white-space:nowrap}
+.msg .msg-note{display:block;margin-top:4px;font-size:11px;opacity:.85}

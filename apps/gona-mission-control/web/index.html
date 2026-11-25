@@ -28,7 +28,7 @@
   <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
   <p id="chat-status" class="status" role="status"></p>
   <form id="chat-form" class="composer"><label for="text" class="sr">Votre message</label>
-   <textarea id="text" rows="3" maxlength="4000" placeholder="Une question, une mission, une idée… (/ pour les commandes)" required></textarea>
+   <textarea id="text" rows="3" maxlength="16000" placeholder="Une question, une mission, une idée… (/ pour les commandes)" required></textarea>
    <div id="command-menu" class="command-menu" role="listbox" aria-label="Commandes" hidden></div>
    <div id="model-panel" class="model-panel" hidden></div>
    <div class="composer-bottom"><span id="attach-list" class="attach-list"></span><span class="composer-actions"><button id="stop" class="btn danger" type="button" hidden title="Interrompre le tour en cours">■ Stop</button><button id="voicecancel" class="btn" type="button" hidden title="Annuler">✕</button><input id="filepick" type="file" accept="image/*,.pdf,.txt,.md,.csv,.json,.log,.py,.yaml,.yml,.xml,.html" hidden><button id="attachbtn" class="btn" type="button" title="Joindre une image ou un document">📎</button><button id="modelbtn" class="btn" type="button" title="Modèle et voix" aria-haspopup="true">⚙ Modèle</button><button id="speakerbtn" class="btn speaker on" type="button" aria-pressed="true" title="Réponse à voix haute">🔊</button><button id="voicebtn" class="btn mic" type="button" title="Maintenir pour parler (ou Espace)" aria-label="Maintenir pour parler">🎙</button><button id="send" class="btn primary" type="submit">Envoyer ↗</button></span></div>
