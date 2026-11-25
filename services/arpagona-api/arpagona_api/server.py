@@ -18,6 +18,7 @@ from .hermes import TERMINAL, HermesClient, HermesError
 from .store import SESSION_TTL_S, Store
 from .kanban import KanbanClient
 from .agents import AgentRegistry
+from . import bridge_token
 
 COOKIE = "arpagona_session"
 MAX_BODY = 16 * 1024
@@ -47,6 +48,9 @@ class App:
         self.session_idle_minutes = session_idle_minutes
         self.session_daily_hour = session_daily_hour
         self.now = now
+        # Pont vers un second Mission Control (GONA) : clé + comptes autorisés. Vide = pont désactivé.
+        self.bridge_key: bytes = b""
+        self.bridge_logins: set[str] = set()
         self.chat_lock = threading.Lock()
         self.kanban: KanbanClient | None = None
         # Registre d'agents personnels : s'il est chargé, chaque compte n'atteint QUE son propre agent.
@@ -170,7 +174,8 @@ def make_handler(app: App):
             self.send_header("Connection", "close")
             self.close_connection = True
             for name, value in (extra or {}).items():
-                self.send_header(name, value)
+                for item in (value if isinstance(value, list) else [value]):
+                    self.send_header(name, item)
             self.end_headers()
 
         def _json(self, status: int, payload: dict, extra: dict | None = None) -> None:
@@ -205,11 +210,18 @@ def make_handler(app: App):
                 return None
             return data if isinstance(data, dict) else None
 
-        def _cookie(self, value: str, max_age: int) -> str:
-            parts = [f"{COOKIE}={value}", "Path=/", "HttpOnly", "SameSite=Strict", f"Max-Age={max_age}"]
+        def _cookie(self, value: str, max_age: int, name: str = COOKIE) -> str:
+            parts = [f"{name}={value}", "Path=/", "HttpOnly", "SameSite=Strict", f"Max-Age={max_age}"]
             if app.cookie_secure:
                 parts.append("Secure")
             return "; ".join(parts)
+
+        def _bridge_cookie(self, login: str) -> str | None:
+            """Cookie pont pour les comptes autorisés uniquement (jamais `mael`)."""
+            if not app.bridge_key or login not in app.bridge_logins:
+                return None
+            token = bridge_token.issue(app.bridge_key, login, SESSION_TTL_S)
+            return self._cookie(token, SESSION_TTL_S, bridge_token.COOKIE)
 
         # --- routage -------------------------------------------------------
         def do_GET(self):
@@ -220,7 +232,10 @@ def make_handler(app: App):
                 user = self._user()
                 if not user:
                     return self._json(401, {"error": "non connecté"})
-                return self._json(200, {"login": user["login"], "name": user["display_name"]})
+                me = {"login": user["login"], "name": user["display_name"]}
+                if app.bridge_key and user["login"] in app.bridge_logins:
+                    me["gona"] = True  # bouton de bascule vers GONA : jamais pour les autres comptes
+                return self._json(200, me)
             if path.startswith("/api/kanban/"):
                 return self._kanban(path, False)
             if path == "/api/conversation":
@@ -346,8 +361,12 @@ def make_handler(app: App):
             app.login_ok(login)
             token = app.store.open_session(user["id"])
             app.store.audit(user["id"], "connexion")
+            cookies = [self._cookie(token, SESSION_TTL_S)]
+            bridge = self._bridge_cookie(user["login"])
+            if bridge:
+                cookies.append(bridge)
             self._json(200, {"login": user["login"], "name": user["display_name"]},
-                       {"Set-Cookie": self._cookie(token, SESSION_TTL_S)})
+                       {"Set-Cookie": cookies})
 
         def _logout(self) -> None:
             if self._body() is None and self.headers.get("X-Arpagona") != "1":
@@ -358,7 +377,8 @@ def make_handler(app: App):
                 app.store.close_session(token)
             if user:
                 app.store.audit(user["id"], "déconnexion")
-            self._json(200, {"status": "ok"}, {"Set-Cookie": self._cookie("", 0)})
+            self._json(200, {"status": "ok"},
+                       {"Set-Cookie": [self._cookie("", 0), self._cookie("", 0, bridge_token.COOKIE)]})
 
         # --- conversation ----------------------------------------------------
         def _conversation(self) -> None:
@@ -701,6 +721,10 @@ def main() -> None:
     app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1",
               session_idle_minutes=int(os.environ.get("ARPAGONA_SESSION_IDLE_MINUTES", "240")),
               session_daily_hour=int(os.environ.get("ARPAGONA_SESSION_DAILY_HOUR", "4")))
+    bridge_file = os.environ.get("ARPAGONA_BRIDGE_KEY_FILE", "")
+    if bridge_file and Path(bridge_file).is_file():
+        app.bridge_key = Path(bridge_file).read_text().strip().encode("ascii")
+        app.bridge_logins = {x for x in os.environ.get("ARPAGONA_BRIDGE_LOGINS", "thibaud").split(",") if x}
     token_file = os.environ.get("ARPAGONA_SERVICE_TOKEN_FILE", "")
     app.service_token = Path(token_file).read_text(encoding="ascii").strip() if token_file else ""
     kanban_file = os.environ.get("ARPAGONA_KANBAN_TOKEN_FILE", "")

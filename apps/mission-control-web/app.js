@@ -55,6 +55,12 @@ async function start() {
   if (res.status !== 200) { show("login"); return; }
   meUser = await res.json();
   $("who-name").textContent = meUser.name;
+  if (meUser.gona) {
+    // Même hôte, port voisin : 8700 → 8710 (ou 18700 → 18710 sur l'iMac). La session de 90 jours est partagée.
+    const sw = $("switch-gona");
+    sw.href = location.protocol + "//" + location.hostname + ":" + (parseInt(location.port || "80", 10) + 10) + "/";
+    sw.hidden = false;
+  }
   show("app");
   await loadConversation();
   loadKanban();
