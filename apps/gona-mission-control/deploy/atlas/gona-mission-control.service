@@ -1,0 +1,32 @@
+[Unit]
+Description=GONA Mission Control (alpha, mode api sans Telegram) - banc de test ARPAGONA
+After=network.target hermes-arpagona-gateway.service
+
+[Service]
+Type=simple
+User=gona-mc
+Group=gona-mc
+WorkingDirectory=/opt/gona-mission-control/current
+ExecStart=/usr/bin/python3 /opt/gona-mission-control/current/server.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PORT=8711
+Environment=GONA_MC_BACKEND=api
+Environment=GONA_MC_HERMES_URL=http://127.0.0.1:8642
+Environment=GONA_MC_HERMES_KEY_FILE=/etc/gona-mission-control/hermes_key
+Environment=GONA_MC_TOKEN_FILE=/etc/gona-mission-control/token
+Environment=GONA_MC_LEGACY_TOKEN_FILE=/etc/gona-mission-control/token
+Environment=GONA_MC_PROFILE=/var/lib/gona-mission-control/profile
+Environment=GONA_MC_DATA_DIR=/var/lib/gona-mission-control/data
+Environment=HERMES_KANBAN_DB=/var/lib/gona-mission-control/kanban.db
+Environment=GONA_MC_HERMES_CLI=/bin/false
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/gona-mission-control
+
+[Install]
+WantedBy=multi-user.target
