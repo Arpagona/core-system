@@ -57,8 +57,14 @@ class HermesClient:
             raise HermesError('Réponse du moteur illisible')
         return obj
 
-    def start_run(self, text, session_id, idempotency_key, instructions=None):
+    def start_run(self, text, session_id, idempotency_key, instructions=None, model=None, provider=None, reasoning=None):
         body = {'input': text, 'session_id': session_id}
+        if model:
+            body['model'] = model
+            if provider:
+                body['provider'] = provider
+        if reasoning:
+            body['model_options'] = {'reasoning': ({'enabled': False} if reasoning == 'none' else {'enabled': True, 'effort': reasoning})}
         if instructions:
             body['instructions'] = instructions
         result = self._json('POST', '/v1/runs', body, {'Idempotency-Key': idempotency_key})
@@ -114,6 +120,7 @@ create table if not exists conversations(id text primary key, hermes_session tex
 create table if not exists messages(id integer primary key autoincrement, conv text not null, role text not null, text text not null, ts real not null, submission text);
 create table if not exists submissions(submission text primary key, conv text not null, text text not null, created real not null,
   state text not null default 'queued', run_id text);
+create table if not exists settings(k text primary key, v text not null);
 create index if not exists msg_conv on messages(conv, id);
 create table if not exists rotations(conv text primary key, parent text not null, reason text not null,
   handoff text, sent integer not null default 0, created real not null);
@@ -127,6 +134,8 @@ class ApiBackend:
         self.client = client
         self.profile = profile_name
         self.db_path = str(db_path)
+        self.lister = None    # (sid, texte) -> réponse « /model » sans argument (liste des fournisseurs)
+        self.resolver = None  # (nom, fournisseur) -> (modèle, fournisseur) : alias de modèles
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
         self._subs = {}      # conv -> [queue.Queue]
@@ -162,6 +171,18 @@ class ApiBackend:
         if r is None:
             raise ValueError('Session active requise ; actualiser le fil')
         return r
+
+    # -- réglages persistants (modèle, raisonnement) : valables pour toutes les conversations
+    def settings(self):
+        with self._db() as c:
+            return {r['k']: r['v'] for r in c.execute('select k,v from settings')}
+
+    def _set(self, k, v):
+        with self._lock, self._db() as c:
+            if v:
+                c.execute('insert into settings(k,v) values(?,?) on conflict(k) do update set v=excluded.v', (k, v))
+            else:
+                c.execute('delete from settings where k=?', (k,))
 
     # -- contrat lecture ------------------------------------------------------
     def channels(self):
@@ -265,7 +286,9 @@ class ApiBackend:
         self._live[sid] = {'running': True, 'text': '', 'run_id': None}
         self._publish(sid, {'type': 'writing'})
         try:
-            run_id = self.client.start_run(text, session, submission, instructions=link['handoff'] if link else None)
+            cfg = self.settings()
+            run_id = self.client.start_run(text, session, submission, instructions=link['handoff'] if link else None,
+                                           model=cfg.get('model'), provider=cfg.get('provider'), reasoning=cfg.get('reasoning'))
         except HermesError as exc:
             return self._finish(sid, submission, 'Le moteur est indisponible (%s). Renvoie le message plus tard.' % exc, 'failed')
         with self._db() as c:
@@ -337,10 +360,42 @@ class ApiBackend:
             with self._lock, self._db() as c:
                 cid = self._new_conv(c)
             return {'ok': True, 'kind': 'new', 'new_session_id': cid, 'text': 'Nouvelle conversation ouverte.'}
+        parts = text.strip().split()
+        cfg = self.settings()
         if name == 'status':
             live = self._live.get(sid) or {}
-            return {'ok': True, 'kind': 'info', 'reasoning': '', 'text': 'Conversation %s · %s.' % (
-                sid, 'un tour est en cours' if live.get('running') else 'inactive')}
+            return {'ok': True, 'kind': 'info', 'reasoning': cfg.get('reasoning', ''), 'text': 'Conversation %s · %s · modèle %s · raisonnement %s.' % (
+                sid, 'un tour est en cours' if live.get('running') else 'inactive',
+                cfg.get('model') or 'par défaut du profil', cfg.get('reasoning') or 'par défaut')}
+        if name == 'reasoning':
+            levels = ('none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'reset')
+            if len(parts) == 1:
+                return {'ok': True, 'kind': 'reasoning', 'current': cfg.get('reasoning', ''), 'levels': ['low', 'medium', 'high', 'xhigh', 'reset']}
+            lvl = parts[1].lower()
+            if lvl not in levels:
+                return {'ok': False, 'error': 'Niveau inconnu. Valeurs : low, medium, high, xhigh, reset.'}
+            self._set('reasoning', '' if lvl == 'reset' else lvl)
+            return {'ok': True, 'kind': 'info', 'text': 'Raisonnement : %s (dès le prochain message).' % ('par défaut' if lvl == 'reset' else lvl)}
+        if name == 'model':
+            if len(parts) == 1:
+                if self.lister:
+                    return self.lister(sid, text)
+                return {'ok': True, 'kind': 'info', 'text': 'Modèle actuel : %s.' % (cfg.get('model') or 'par défaut du profil')}
+            arg = parts[1]
+            provider = ''
+            if '--provider' in parts and parts.index('--provider') + 1 < len(parts):
+                provider = parts[parts.index('--provider') + 1]
+            if provider and not re.fullmatch(r'[A-Za-z0-9_.-]{2,64}', provider):
+                return {'ok': False, 'error': 'Fournisseur invalide.'}
+            if arg.lower() == 'reset':
+                self._set('model', ''); self._set('provider', '')
+                return {'ok': True, 'kind': 'info', 'text': 'Modèle : par défaut du profil (dès le prochain message).'}
+            if self.resolver:
+                arg, provider = self.resolver(arg, provider)
+            if not re.fullmatch(r'[A-Za-z0-9_.:/@-]{2,120}', arg or ''):
+                return {'ok': False, 'error': 'Nom de modèle invalide.'}
+            self._set('model', arg); self._set('provider', provider)
+            return {'ok': True, 'kind': 'info', 'text': 'Modèle : %s%s (dès le prochain message).' % (arg, ' · ' + provider if provider else '')}
         if name == 'help':
             return {'ok': True, 'kind': 'info', 'text': HELP_TEXT}
         return {'ok': False, 'error': '/%s n’est pas pris en charge par cette instance (réglage côté serveur).' % name}

@@ -44,6 +44,24 @@ API = None
 if config.BACKEND == 'api':
     API = backend_api.ApiBackend(config.DATA_DIR / 'chat.db',
                                  backend_api.HermesClient(config.HERMES_URL, config.HERMES_KEY_FILE), config.PROFILE_NAME)
+    ALIAS_MODELS = {'terra': ('gpt-6.1-terra', 'openai-codex'), 'sol': ('gpt-6.1-sol', 'openai-codex'),
+                    'luna': ('gpt-5.6-luna', 'openai-codex'), 'opus': ('claude-opus-5-5', 'anthropic'),
+                    'fable': ('claude-fable-5.1', 'anthropic'), 'sonnet': ('claude-sonnet-5-5', 'anthropic'),
+                    'deepseek': ('deepseek-v4.1-flash', 'opencode-go'), 'kimi': ('kimi-k3', 'kimi-coding')}
+    API.resolver = lambda name, prov: ALIAS_MODELS.get(name.lower(), (name, prov)) if not prov else (name, prov)
+
+    def _model_list(sid, text):
+        # liste des fournisseurs/modèles : lue sur la passerelle (catalogue), le réglage reste local à Agent Core
+        try:
+            tg = next(c for c in old_api('/api/channels')['channels'] if c.get('profile') == config.PROFILE_NAME and c.get('session'))
+            out = old_api('/api/channel/command', {'id': tg['session'], 'profile': config.PROFILE_NAME, 'command': '/model'})
+            cfg = API.settings()
+            if cfg.get('model'):
+                out = dict(out, model=cfg['model'], model_label=cfg['model'], provider=cfg.get('provider') or out.get('provider'))
+            return out
+        except Exception:
+            return {'ok': True, 'kind': 'info', 'text': 'Catalogue indisponible. Utilise /model <alias> (terra, sol, opus, sonnet, deepseek, kimi) ou /model reset.'}
+    API.lister = _model_list
 COMMANDS = [
     {'command': '/status', 'description': 'Modèle, réflexion et état du fil', 'arg': False},
     {'command': '/model', 'description': 'Choisir le fournisseur puis le modèle', 'arg': False},

@@ -139,8 +139,13 @@ class ApiBackendTests(unittest.TestCase):
 
     def test_unsupported_commands_honest(self):
         sid = self.be.active_id()
-        for c in ('/model', '/reasoning high', '/restart'):
-            r = self.be.command(sid, c); self.assertFalse(r['ok']); self.assertIn('pas pris en charge', r['error'])
+        r = self.be.command(sid, '/restart'); self.assertFalse(r['ok']); self.assertIn('pas pris en charge', r['error'])
+        r = self.be.command(sid, '/reasoning banane'); self.assertFalse(r['ok'])
+        r = self.be.command(sid, '/model x;rm'); self.assertFalse(r['ok'])
+        self.assertTrue(self.be.command(sid, '/reasoning high')['ok']); self.assertEqual(self.be.settings()['reasoning'], 'high')
+        self.assertTrue(self.be.command(sid, '/model gpt-x --provider openai-codex')['ok'])
+        self.assertEqual((self.be.settings()['model'], self.be.settings()['provider']), ('gpt-x', 'openai-codex'))
+        self.assertTrue(self.be.command(sid, '/model reset')['ok']); self.assertNotIn('model', self.be.settings())
         self.assertTrue(self.be.command(sid, '/help')['ok']); self.assertTrue(self.be.command(sid, '/status')['ok'])
 
 
