@@ -179,10 +179,17 @@ SKILL
     ln -sfn /opt/arpagona/current/plugins/arpagona-core "$hh/plugins/arpagona-core"
     ln -sfn /opt/arpagona/current/plugins/arpagona-mail "$hh/plugins/arpagona-mail"
     ln -sfn /opt/arpagona/current/plugins/arpagona-equipe "$hh/plugins/arpagona-equipe"
+    ln -sfn /opt/arpagona/current/plugins/session-lifecycle "$hh/plugins/session-lifecycle"
     chown -h "$user:$user" "$hh"/plugins/*
     as_agent "$login" "$CLI" plugins enable arpagona-core >/dev/null
     as_agent "$login" "$CLI" plugins enable arpagona-mail >/dev/null
     as_agent "$login" "$CLI" plugins enable arpagona-equipe >/dev/null
+    # Sessions propres (ADR 0009) : rotation + passation pour les canaux du gateway (Telegram…).
+    # Le chat Mission Control tourne déjà côté API ARPAGONA ; mêmes seuils des deux côtés.
+    as_agent "$login" "$CLI" plugins enable session-lifecycle >/dev/null
+    as_agent "$login" "$CLI" config set plugins.entries.session-lifecycle.settings.idle_minutes "${ARPAGONA_SESSION_IDLE_MINUTES:-240}" >/dev/null
+    as_agent "$login" "$CLI" config set plugins.entries.session-lifecycle.settings.daily_hour "${ARPAGONA_SESSION_DAILY_HOUR:-4}" >/dev/null
+    as_agent "$login" "$CLI" config set plugins.entries.session-lifecycle.settings.handoff true >/dev/null
     as_agent "$login" "$CLI" config set kanban.dispatch_in_gateway false >/dev/null 2>&1 || true
     # 8. Boîte mail fictive (Maildir, 0700) : seule l'amorce est créée, jamais écrasée.
     install -d -m 700 -o "$user" -g "$user" "$home/mail" "$home/mail/INBOX" "$home/mail/INBOX/new" \
