@@ -361,7 +361,18 @@ async function start() {
   const res = await fetch("/api/me");
   if (res.status !== 200) { show("login"); return; }
   const me = await res.json();
+  const sw = $("switch-atlas");
+  if (sw) {  // même hôte, port voisin : 8710 → 8700 (ou 18710 → 18700 sur l'iMac). Le cookie signé d'Atlas ouvre aussi GONA.
+    sw.href = location.protocol + "//" + location.hostname + ":" + (parseInt(location.port || "80", 10) - 10) + "/";
+    sw.hidden = false;
+  }
   $("who-name").textContent = me.name; window.MC_BACKEND = me.backend || "telegram";
+  if (me.atlas) {
+    // Même hôte, port voisin : 8710 → 8700. La session de 90 jours émise par Atlas reste valable des deux côtés.
+    const sw = $("switch-atlas");
+    sw.href = location.protocol + "//" + location.hostname + ":" + (parseInt(location.port || "80", 10) - 10) + "/";
+    sw.hidden = false;
+  }
   show("app");
   const channels = await api("/api/channels");
   session=(channels.channels.find(c=>!c.thread) || channels.channels[0] || {}).session;

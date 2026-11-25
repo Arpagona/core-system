@@ -23,12 +23,16 @@ import gate
 import config
 import backend_api
 import session_rotation
+import bridge_token
 
 ROOT = Path(__file__).resolve().parent
 PROFILE = config.PROFILE
 TOKEN_FILE = config.TOKEN_FILE
 TOKEN = TOKEN_FILE.read_text().strip()
 COOKIE = hashlib.sha256(('gona-mc-v1:' + TOKEN).encode()).hexdigest()
+BRIDGE_KEY = b''
+if config.BRIDGE_KEY_FILE and Path(config.BRIDGE_KEY_FILE).is_file():
+    BRIDGE_KEY = Path(config.BRIDGE_KEY_FILE).read_text().strip().encode('ascii')
 OLD = config.LEGACY_TOKEN_FILE
 ASK = PROFILE / 'scripts/ask.py'
 KANBAN_DB = config.KANBAN_DB
@@ -367,14 +371,29 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-    def authorized(self):
+    def via_bridge(self):
+        """Vrai si la requête porte un cookie pont valide (session Atlas), faux pour le jeton local de l'iMac."""
         cookie = SimpleCookie()
         try:
             cookie.load(self.headers.get('Cookie', ''))
+            token = cookie[bridge_token.COOKIE].value if bridge_token.COOKIE in cookie else ''
+        except Exception:
+            return False
+        return bool(BRIDGE_KEY and token and bridge_token.verify(BRIDGE_KEY, token, config.BRIDGE_LOGINS))
+
+    def authorized(self):
+        cookie = SimpleCookie()
+        bridge = ''
+        try:
+            cookie.load(self.headers.get('Cookie', ''))
             value = cookie['gona_mc'].value if 'gona_mc' in cookie else ''
+            bridge = cookie[bridge_token.COOKIE].value if bridge_token.COOKIE in cookie else ''
         except Exception:
             value = ''
-        return hmac.compare_digest(value, COOKIE) or hmac.compare_digest(self.headers.get('X-MC-Token',''), TOKEN)
+        if hmac.compare_digest(value, COOKIE) or hmac.compare_digest(self.headers.get('X-MC-Token',''), TOKEN):
+            return True
+        # Session Atlas reconnue : cookie signé, non expiré, compte autorisé (jamais les autres comptes du banc).
+        return bool(BRIDGE_KEY and bridge and bridge_token.verify(BRIDGE_KEY, bridge, config.BRIDGE_LOGINS))
 
     def do_GET(self):
         u = urlsplit(self.path)
@@ -390,7 +409,10 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(401, {'error':'Authentification requise'})
         try:
             if u.path == '/api/me':
-                return self.send(200, {'name':'Thibaud · GONA / gpt5', 'backend': 'api' if API else 'telegram'})
+                me = {'name':'Thibaud · GONA / gpt5', 'backend': 'api' if API else 'telegram'}
+                if self.via_bridge():
+                    me['atlas'] = True  # arrivé par Atlas : le bouton « ⇄ Atlas » ramène sur le banc, même session
+                return self.send(200, me)
             if u.path == '/api/channels':
                 return self.send(200, {'channels':channels()})
             if u.path == '/api/channel/idle':

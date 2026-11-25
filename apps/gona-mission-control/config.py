@@ -20,3 +20,8 @@ BACKEND = os.environ.get('GONA_MC_BACKEND', 'telegram').strip().lower()
 HERMES_URL = os.environ.get('GONA_MC_HERMES_URL', 'http://127.0.0.1:8642')
 HERMES_KEY_FILE = os.environ.get('GONA_MC_HERMES_KEY_FILE', '')
 DATA_DIR = Path(os.environ.get('GONA_MC_DATA_DIR', str(PROFILE / 'gona-mission-control')))
+
+# Pont d'authentification avec le banc Atlas : un cookie signé émis par Atlas pour ces comptes ouvre aussi GONA.
+# Vide (par défaut) = désactivé. La clé est un fichier hors dépôt, jamais une valeur en clair.
+BRIDGE_KEY_FILE = os.environ.get('GONA_MC_BRIDGE_KEY_FILE', '')
+BRIDGE_LOGINS = {x for x in os.environ.get('GONA_MC_BRIDGE_LOGINS', 'thibaud').split(',') if x}
