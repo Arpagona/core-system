@@ -17,6 +17,8 @@ jobs:
       - name: Tests portier Hindsight (banque personnelle + banque d'équipe)
         working-directory: services/hindsight-gate
         run: PYTHONPATH=. /usr/bin/python3 -m unittest discover -s tests
+      - name: Tests plugin session-lifecycle (rotation + passation)
+        run: /usr/bin/python3 -m unittest discover -s plugins/session-lifecycle/tests -v
       - name: Compiler les plugins, la recette d'isolation et les outils de développement
         run: /usr/bin/python3 -m py_compile plugins/arpagona-core/__init__.py plugins/arpagona-mail/__init__.py plugins/arpagona-equipe/__init__.py deploy/atlas/migrate_kanban_equipe.py tests/e2e/isolation_agents.py dev/*.py
       - name: Syntaxe des scripts de déploiement des agents personnels

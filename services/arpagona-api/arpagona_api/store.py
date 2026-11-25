@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS conversations (
     user_id INTEGER NOT NULL REFERENCES users(id),
     hermes_session_id TEXT NOT NULL UNIQUE,
     created_at REAL NOT NULL,
-    closed_at REAL
+    closed_at REAL,
+    closed_reason TEXT,
+    parent_id INTEGER REFERENCES conversations(id)
 );
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY,
@@ -114,8 +116,14 @@ class Store:
         mêmes identifiants, dans une transaction. Les messages gardent leur conversation.
         """
         cols = [r["name"] for r in self._db.execute("PRAGMA table_info(conversations)")]
-        if "closed_at" in cols:
-            return
+        if "closed_at" not in cols:
+            self._migrate_legacy()
+        cols = {r["name"] for r in self._db.execute("PRAGMA table_info(conversations)")}
+        for name, kind in (("closed_reason", "TEXT"), ("parent_id", "INTEGER REFERENCES conversations(id)")):
+            if name not in cols:
+                self._db.execute(f"ALTER TABLE conversations ADD COLUMN {name} {kind}")
+
+    def _migrate_legacy(self) -> None:
         self._db.execute("PRAGMA foreign_keys=OFF")
         try:
             self._db.execute("BEGIN")
@@ -251,20 +259,23 @@ class Store:
     def _new_session_id(user_id: int) -> str:
         return f"arpagona-u{user_id}-{secrets.token_hex(12)}"
 
-    def new_conversation(self, user_id: int) -> sqlite3.Row:
+    def new_conversation(self, user_id: int, reason: str = "manual", now: float | None = None) -> sqlite3.Row:
         """/new : ferme la conversation ouverte et en ouvre une neuve, avec une nouvelle session Hermès.
 
         L'ancienne reste en base (historique, engagements liés) mais n'est plus jamais envoyée au moteur.
         La mémoire d'équipe (Hindsight) n'est pas touchée : elle appartient à l'instance (ADR 0008).
         """
-        now = time.time()
+        if reason not in ("manual", "idle", "daily"):
+            raise ValueError("raison de fermeture invalide")
+        now = time.time() if now is None else now
         with self._lock:
             self._db.execute("BEGIN IMMEDIATE")
             try:
-                self._db.execute("UPDATE conversations SET closed_at = ? WHERE user_id = ? AND closed_at IS NULL",
-                                 (now, user_id))
-                self._db.execute("INSERT INTO conversations(user_id, hermes_session_id, created_at) VALUES (?,?,?)",
-                                 (user_id, self._new_session_id(user_id), now))
+                old = self._db.execute("SELECT id FROM conversations WHERE user_id = ? AND closed_at IS NULL", (user_id,)).fetchone()
+                self._db.execute("UPDATE conversations SET closed_at = ?, closed_reason = ? WHERE user_id = ? AND closed_at IS NULL",
+                                 (now, reason, user_id))
+                self._db.execute("INSERT INTO conversations(user_id, hermes_session_id, created_at, parent_id) VALUES (?,?,?,?)",
+                                 (user_id, self._new_session_id(user_id), now, old["id"] if old else None))
                 row = self._db.execute("SELECT * FROM conversations WHERE user_id = ? AND closed_at IS NULL",
                                        (user_id,)).fetchone()
                 self._db.execute("COMMIT")
@@ -277,10 +288,10 @@ class Store:
         return int(self._one("SELECT COUNT(*) AS n FROM conversations WHERE user_id = ?", (user_id,))["n"])
 
     def add_message(self, conversation_id: int, role: str, content: str, status: str = "done",
-                    run_id: str | None = None) -> int:
+                    run_id: str | None = None, created_at: float | None = None) -> int:
         cur = self._run(
             "INSERT INTO messages(conversation_id, role, content, status, run_id, created_at) VALUES (?,?,?,?,?,?)",
-            (conversation_id, role, content, status, run_id, time.time()),
+            (conversation_id, role, content, status, run_id, time.time() if created_at is None else created_at),
         )
         return int(cur.lastrowid or 0)
 
@@ -293,6 +304,24 @@ class Store:
 
     def messages(self, conversation_id: int) -> list[sqlite3.Row]:
         return self._all("SELECT * FROM messages WHERE conversation_id = ? ORDER BY id", (conversation_id,))
+
+    def conversation_by_id(self, conversation_id: int, user_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM conversations WHERE id = ? AND user_id = ?", (conversation_id, user_id))
+
+    def visible_messages(self, conv: sqlite3.Row) -> list[sqlite3.Row]:
+        chain = [conv["id"]]
+        while conv["parent_id"] and len(chain) < 10000:
+            parent = self.conversation_by_id(conv["parent_id"], conv["user_id"])
+            if not parent or parent["closed_reason"] not in ("idle", "daily") or parent["id"] in chain:
+                break
+            chain.append(parent["id"])
+            conv = parent
+        rows = []
+        for cid in chain:
+            rows.extend(reversed(self.messages(cid)))
+            if len(rows) >= 200:
+                break
+        return list(reversed(rows[:200]))
 
     def has_pending(self, conversation_id: int) -> bool:
         return self._one("SELECT 1 FROM messages WHERE conversation_id = ? AND status = 'pending'",
