@@ -25,5 +25,24 @@ class SetPasswordTest(unittest.TestCase):
                 store.set_password("bob", "court")
 
 
+class SessionDurationTest(unittest.TestCase):
+    def test_session_lasts_90_days_and_survives_a_week(self):
+        import time
+        from arpagona_api import store as st
+        with tempfile.TemporaryDirectory() as d:
+            store = Store(str(Path(d) / "a.db"))
+            uid = store.add_user("alice", "Alice", "mot-de-passe-long")
+            token = store.open_session(uid)
+            self.assertEqual(st.SESSION_TTL_S, 90 * 24 * 3600)
+            real = time.time
+            try:
+                time.time = lambda: real() + 7 * 24 * 3600
+                self.assertIsNotNone(store.user_for_token(token))
+                time.time = lambda: real() + 91 * 24 * 3600
+                self.assertIsNone(store.user_for_token(token))
+            finally:
+                time.time = real
+
+
 if __name__ == "__main__":
     unittest.main()
