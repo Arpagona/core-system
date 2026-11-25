@@ -1,0 +1,22 @@
+[Unit]
+Description=Relais Atlas -> GONA (10.68.100.1:8710 vers le tunnel SSH inversé 127.0.0.1:18710)
+After=wg-quick@wg0.service
+Requires=wg-quick@wg0.service
+
+[Service]
+Type=simple
+# Écoute sur l'adresse WireGuard seulement (jamais le LAN). Le pare-feu limite ensuite 8710 au pair de Thibaud.
+ExecStart=/usr/bin/socat TCP-LISTEN:8710,bind=10.68.100.1,fork,reuseaddr TCP:127.0.0.1:18710
+Restart=always
+RestartSec=3
+DynamicUser=yes
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+RestrictAddressFamilies=AF_INET AF_INET6
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
