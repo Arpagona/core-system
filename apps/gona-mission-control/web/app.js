@@ -1,3 +1,5 @@
+// Contexte non sécurisé (http://10.68.100.1) : crypto.randomUUID n'existe pas, l'envoi échouait en silence.
+if (!crypto.randomUUID) crypto.randomUUID = () => ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
 "use strict";
 addEventListener("offline",()=>{const l=document.querySelector(".live"); if(l) l.textContent="● Hors ligne";});
 addEventListener("online",()=>{const l=document.querySelector(".live"); if(l) l.textContent="● En ligne";});

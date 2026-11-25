@@ -53,8 +53,25 @@
     if (state !== "idle") return;
     if (!window.MC || !MC.session()) { show("idle", "Conversation non chargée"); return; }
     if (MC.busy()) { show("idle", "Un message est déjà en attente de réponse"); return; }
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) { show("idle", "Micro indisponible dans ce navigateur"); return; }
+    const natif = !navigator.mediaDevices?.getUserMedia && window.AndroidMic;   // appli Android : micro natif (HTTP = pas de getUserMedia)
+    if (!natif && (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder)) { show("idle", "Micro indisponible dans ce navigateur"); return; }
     const id = ++gen; pendingRelease = false;
+    if (natif) {
+      if (!AndroidMic.start()) { show("idle", "Micro refusé : autorise-le dans les réglages Android de l’appli"); return; }
+      chunks = []; startedAt = Date.now();
+      recorder = { state: "recording", mimeType: "audio/mp4", stop() {
+        this.state = "inactive";
+        const b64 = AndroidMic.stop(), bin = atob(b64 || ""), u = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+        if (id === gen && u.length) chunks.push(new Blob([u], { type: "audio/mp4" }));
+        this.onstop();
+      } };
+      recorder.onstop = () => onRecorded(id);
+      show("recording", "Je t’écoute… relâche pour envoyer");
+      timer = setTimeout(() => { if (state === "recording") finish(); }, MAX_MS);
+      if (pendingRelease) { pendingRelease = false; finish(); }
+      return;
+    }
     show("starting", "Ouverture du micro…");
     try {
       const acquired = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
