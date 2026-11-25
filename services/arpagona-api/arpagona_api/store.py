@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS audit (
 );
 """
 
-SESSION_TTL_S = 12 * 3600
+SESSION_TTL_S = 90 * 24 * 3600  # téléphone personnel : une connexion tous les 90 jours
 _SCRYPT = {"n": 2**14, "r": 8, "p": 1, "dklen": 32}
 
 
