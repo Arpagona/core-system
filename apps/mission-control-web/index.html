@@ -24,12 +24,12 @@
  </nav>
  <div class="workspace">
  <section id="view-chat" class="chat panel">
-  <div class="section-head"><div><p class="eyebrow">Votre copilote</p><h2>Un fil, toutes vos décisions.</h2></div><span class="live">● En ligne</span></div>
+  <div class="section-head"><div><p class="eyebrow">Votre copilote</p></div><span class="live">● En ligne</span></div>
   <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
   <p id="chat-status" class="status" role="status"></p>
   <form id="chat-form" class="composer"><label for="text" class="sr">Votre message</label>
    <textarea id="text" rows="3" maxlength="8000" placeholder="Une question, une mission, une idée…" required></textarea>
-   <div class="composer-bottom"><small>Entrée pour envoyer · Maj + Entrée pour revenir à la ligne · /new nouvelle conversation · /help</small><button id="send" class="btn primary" type="submit">Envoyer ↗</button></div>
+   <div class="composer-bottom"><button id="send" class="btn primary" type="submit">Envoyer ↗</button></div>
   </form>
  </section>
  <section id="view-drafts" class="page panel" hidden><p class="eyebrow">Validation humaine</p><h2>Approbations</h2><p class="hint">Vous gardez la main. Un brouillon approuvé reste à copier : aucun envoi automatique.</p><div id="drafts-list" class="cards"></div></section>
