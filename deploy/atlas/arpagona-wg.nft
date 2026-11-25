@@ -8,7 +8,6 @@ table inet arpagona_wg {
   iifname "wg0" ct state established,related accept
   iifname "wg0" ip saddr 10.68.100.0/24 tcp dport { 22, 8700 } accept
   # 8710 = relais vers le Mission Control personnel GONA : le téléphone de Thibaud seulement (jamais Maël).
-  iifname "wg0" ip saddr 10.68.100.3 tcp dport 8710 accept
   # GONA (relais 8710) : le pair de Thibaud seulement (10.68.100.3). Le pair de Maël (10.68.100.2) n'y accède pas.
   iifname "wg0" ip saddr 10.68.100.3 tcp dport 8710 accept
   iifname "wg0" ip saddr 10.68.100.0/24 icmp type echo-request accept
