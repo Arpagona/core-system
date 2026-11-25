@@ -335,7 +335,7 @@ async function openCard(id) {
       const b = node("button", label, "btn ghost");
       b.addEventListener("click", async () => {
         b.disabled = true;
-        try { await kanban(op, {id, ...(op === "block" ? {text:"Bloquée depuis Mission Control"} : {})});
+        try { await kanban(op, {id, ...(op === "block" ? {text:"Bloquée depuis Agent Core"} : {})});
           if(op === "archive") $("card-dialog").close(); else await openCard(id);
           await loadKanban();
         } catch(err) { $("card-error").textContent = err.message; }

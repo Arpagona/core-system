@@ -1,6 +1,6 @@
 {
-  "name": "ARPAGONA Mission Control",
-  "short_name": "Mission Control",
+  "name": "ARPAGONA Agent Core",
+  "short_name": "Agent Core",
   "description": "Votre espace de pilotage ARPAGONA : il prépare, vous décidez.",
   "id": "/",
   "start_url": "/",
