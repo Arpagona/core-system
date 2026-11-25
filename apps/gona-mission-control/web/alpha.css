@@ -93,3 +93,4 @@ details.column[open]{opacity:.85}
 /* Badge « Sans responsable » (24/11) : texte visible, gris-violet, distinct de needs-input (ambre) */
 .badge-unowned{display:inline-block;margin:0 0 8px;padding:2px 8px;border-radius:999px;border:1px solid #7c5cc4;background:#efe9fb;color:#4a2f8f;font-size:11px;font-weight:700;line-height:1.5}
 .task.unowned{border-left:3px solid #7c5cc4}
+@media (max-width:700px){#clock{display:none}}
