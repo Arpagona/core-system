@@ -20,7 +20,8 @@ class FakeHermes(http.server.BaseHTTPRequestHandler):
             key = self.headers.get('Idempotency-Key')
             if key in FakeHermes.keys: return self._json({'run_id': FakeHermes.keys[key]})
             FakeHermes.started += 1; rid = 'run_%d' % FakeHermes.started
-            FakeHermes.keys[key] = rid; FakeHermes.runs[rid] = {'input': body['input'], 'session': body['session_id'], 'status': 'running'}
+            FakeHermes.keys[key] = rid; FakeHermes.runs[rid] = {'input': body['input'], 'session': body['session_id'], 'status': 'running',
+                                                         'instructions': body.get('instructions')}
             return self._json({'run_id': rid})
         if self.path.endswith('/stop'):
             FakeHermes.runs[self.path.split('/')[3]]['status'] = 'cancelled'; FakeHermes.slow.set()
@@ -86,6 +87,38 @@ class ApiBackendTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.be.valid(sid)
         self.be.send(r['new_session_id'], 'trois', 'imac-mc-00000003'); self.wait(r['new_session_id'], 'imac-mc-00000003')
         self.assertEqual(len({x['session'] for x in FakeHermes.runs.values()}), 2)
+
+    def age(self, hours):
+        import sqlite3
+        c = sqlite3.connect(self.db); c.execute('update messages set ts = ts - ?', (hours * 3600,)); c.commit(); c.close()
+
+    def test_auto_rotation_handoff_and_continuous_thread(self):
+        with patch.dict(os.environ, {'MC_SESSION_IDLE_MINUTES': '240', 'MC_SESSION_DAILY_HOUR': '-1'}):
+            sid = self.be.active_id(); self.be.send(sid, 'devis Dupont', 'imac-mc-r0000001'); self.wait(sid, 'imac-mc-r0000001')
+            self.be.send(sid, 'encore', 'imac-mc-r0000002'); self.wait(sid, 'imac-mc-r0000002')
+            self.assertEqual(len({r['session'] for r in FakeHermes.runs.values()}), 1)  # actif : pas de rotation
+            self.age(5)
+            r = self.be.send(sid, 'on reprend', 'imac-mc-r0000003')
+            self.assertEqual(r['rotated'], 'idle'); new = r['session']; self.assertNotEqual(new, sid)
+            self.wait(new, 'imac-mc-r0000003')
+            last = FakeHermes.runs['run_%d' % FakeHermes.started]
+            self.assertIn('Bonjour devis Dupont', last['instructions']); self.assertIn('Reprise de conversation', last['instructions'])
+            self.assertEqual(len({x['session'] for x in FakeHermes.runs.values()}), 2)
+            texts = [m['text'] for m in self.be.messages(new)['messages']]
+            self.assertEqual(texts[0], 'devis Dupont'); self.assertEqual(texts[-1], 'Bonjour on reprend')
+            self.be.send(new, 'suite', 'imac-mc-r0000004'); self.wait(new, 'imac-mc-r0000004')
+            self.assertIsNone(FakeHermes.runs['run_%d' % FakeHermes.started]['instructions'])  # passation unique
+
+    def test_no_rotation_when_disabled_or_after_manual_new(self):
+        with patch.dict(os.environ, {'MC_SESSION_IDLE_MINUTES': '0', 'MC_SESSION_DAILY_HOUR': '-1'}):
+            sid = self.be.active_id(); self.be.send(sid, 'un', 'imac-mc-d0000001'); self.wait(sid, 'imac-mc-d0000001')
+            self.age(30)
+            self.assertIsNone(self.be.send(sid, 'deux', 'imac-mc-d0000002')['rotated']); self.wait(sid, 'imac-mc-d0000002')
+        with patch.dict(os.environ, {'MC_SESSION_IDLE_MINUTES': '240'}):
+            new = self.be.command(sid, '/new')['new_session_id']
+            self.assertIsNone(self.be.send(new, 'trois', 'imac-mc-d0000003')['rotated']); self.wait(new, 'imac-mc-d0000003')
+            self.assertIsNone(FakeHermes.runs['run_%d' % FakeHermes.started]['instructions'])
+            self.assertEqual([m['text'] for m in self.be.messages(new)['messages']][0], 'trois')
 
     def test_stop(self):
         sid = self.be.active_id(); self.be.send(sid, 'lent', 'imac-mc-00000010')

@@ -83,3 +83,13 @@ details.column[open]{opacity:.85}
 
 .composer-actions .btn.speaker{opacity:.55;align-self:stretch;height:auto}
 .composer-actions .btn.speaker.on{opacity:1;border-color:#3ecf8e;box-shadow:0 0 0 1px #3ecf8e inset}
+
+/* Bandeau : horloge + croix kiosque (21/11) */
+.bar-right{display:flex;align-items:center;gap:20px}
+#clock{font-size:15px;font-weight:600;color:#334155;text-transform:capitalize;white-space:nowrap}
+.kiosk-close{font:inherit;font-size:22px;line-height:1;width:44px;height:44px;border-radius:50%;border:1px solid #d3d7e0;background:#fff;color:#0f172a;cursor:pointer}
+.kiosk-close:hover{background:#c62828;border-color:#c62828;color:#fff}
+
+/* Badge « Sans responsable » (24/11) : texte visible, gris-violet, distinct de needs-input (ambre) */
+.badge-unowned{display:inline-block;margin:0 0 8px;padding:2px 8px;border-radius:999px;border:1px solid #7c5cc4;background:#efe9fb;color:#4a2f8f;font-size:11px;font-weight:700;line-height:1.5}
+.task.unowned{border-left:3px solid #7c5cc4}

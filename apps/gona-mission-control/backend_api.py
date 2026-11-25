@@ -57,9 +57,11 @@ class HermesClient:
             raise HermesError('Réponse du moteur illisible')
         return obj
 
-    def start_run(self, text, session_id, idempotency_key):
-        result = self._json('POST', '/v1/runs', {'input': text, 'session_id': session_id},
-                            {'Idempotency-Key': idempotency_key})
+    def start_run(self, text, session_id, idempotency_key, instructions=None):
+        body = {'input': text, 'session_id': session_id}
+        if instructions:
+            body['instructions'] = instructions
+        result = self._json('POST', '/v1/runs', body, {'Idempotency-Key': idempotency_key})
         run_id = result.get('run_id')
         self._run_path(run_id)
         return run_id
@@ -103,6 +105,9 @@ import sqlite3
 import threading
 import time
 from contextlib import closing
+from datetime import datetime
+
+import session_rotation
 
 SCHEMA = """
 create table if not exists conversations(id text primary key, hermes_session text not null, title text, created real, active integer default 0);
@@ -110,6 +115,8 @@ create table if not exists messages(id integer primary key autoincrement, conv t
 create table if not exists submissions(submission text primary key, conv text not null, text text not null, created real not null,
   state text not null default 'queued', run_id text);
 create index if not exists msg_conv on messages(conv, id);
+create table if not exists rotations(conv text primary key, parent text not null, reason text not null,
+  handoff text, sent integer not null default 0, created real not null);
 """
 HELP_TEXT = ('Commandes : /new (nouvelle conversation), /stop (interrompre le tour en cours), /status (état), '
              '/help. /model, /reasoning et /restart se règlent côté serveur de cette instance.')
@@ -169,10 +176,37 @@ class ApiBackend:
         return sid
 
     def messages(self, sid):
+        """Fil affiché : la conversation et ses ancêtres tournés automatiquement (fil continu)."""
         self._conv(sid)
+        out = []
         with self._db() as c:
-            rows = c.execute('select role,text,ts from messages where conv=? order by id', (sid,)).fetchall()
-        return {'session': sid, 'profile': self.profile, 'messages': [dict(r) for r in rows]}
+            cid, seen = sid, set()
+            while cid and cid not in seen and len(out) < 200:
+                seen.add(cid)
+                rows = c.execute('select role,text,ts from messages where conv=? order by id', (cid,)).fetchall()
+                out = [dict(r, conversation=cid) for r in rows] + out
+                link = c.execute('select parent from rotations where conv=?', (cid,)).fetchone()
+                cid = link['parent'] if link else None
+        return {'session': sid, 'profile': self.profile, 'messages': out[-200:]}
+
+    def _maybe_rotate(self, c, sid):
+        """Rotation paresseuse avant un envoi (mêmes règles que le plugin Hermes session-lifecycle)."""
+        p = session_rotation.policy(None)
+        if not p or (self._live.get(sid) or {}).get('running'):
+            return sid, None
+        if c.execute("select 1 from submissions where conv=? and state in ('queued','running')", (sid,)).fetchone():
+            return sid, None
+        last = c.execute('select max(ts) t from messages where conv=?', (sid,)).fetchone()['t']
+        why = session_rotation.reason(p, datetime.fromtimestamp(last)) if last else None
+        if not why:
+            return sid, None
+        rows = c.execute('select role,text from messages where conv=? order by id desc limit 40', (sid,)).fetchall()
+        opened = c.execute('select created from conversations where id=?', (sid,)).fetchone()['created']
+        text = session_rotation.handoff_text([(r['role'], r['text']) for r in reversed(rows)], why, opened)
+        new = self._new_conv(c)
+        c.execute('insert into rotations(conv,parent,reason,handoff,created) values(?,?,?,?,?)',
+                  (new, sid, why, text, time.time()))
+        return new, why
 
     def reply(self, sid, submission):
         with self._db() as c:
@@ -188,6 +222,7 @@ class ApiBackend:
         with self._lock, self._db() as c:
             if c.execute('select 1 from submissions where submission=?', (submission,)).fetchone():
                 return {'ok': True, 'session': sid, 'state': 'duplicate'}
+            sid, rotated = self._maybe_rotate(c, sid)
             now = time.time()
             c.execute('insert into submissions(submission,conv,text,created) values(?,?,?,?)', (submission, sid, text, now))
             c.execute('insert into messages(conv,role,text,ts,submission) values(?,?,?,?,?)', (sid, 'user', text, now, submission))
@@ -196,7 +231,7 @@ class ApiBackend:
                 q = self._workers[sid] = queue.Queue()
                 threading.Thread(target=self._worker, args=(sid, q), daemon=True).start()
             q.put(submission)
-        return {'ok': True, 'session': sid, 'state': 'queued'}
+        return {'ok': True, 'session': sid, 'state': 'queued', 'rotated': rotated}
 
     def _publish(self, sid, event):
         with self._lock:
@@ -225,15 +260,18 @@ class ApiBackend:
         with self._db() as c:
             text = c.execute('select text from submissions where submission=?', (submission,)).fetchone()['text']
             session = c.execute('select hermes_session from conversations where id=?', (sid,)).fetchone()['hermes_session']
+            link = c.execute('select handoff from rotations where conv=? and sent=0', (sid,)).fetchone()
             c.execute("update submissions set state='running' where submission=?", (submission,))
         self._live[sid] = {'running': True, 'text': '', 'run_id': None}
         self._publish(sid, {'type': 'writing'})
         try:
-            run_id = self.client.start_run(text, session, submission)
+            run_id = self.client.start_run(text, session, submission, instructions=link['handoff'] if link else None)
         except HermesError as exc:
             return self._finish(sid, submission, 'Le moteur est indisponible (%s). Renvoie le message plus tard.' % exc, 'failed')
         with self._db() as c:
             c.execute('update submissions set run_id=? where submission=?', (run_id, submission))
+            if link:
+                c.execute('update rotations set sent=1 where conv=?', (sid,))
         self._live[sid]['run_id'] = run_id
         acc = []
         try:

@@ -403,9 +403,15 @@ $("chat-form").addEventListener("submit",async ev=>{
   sessionStorage.setItem(PENDING,JSON.stringify(p)); setBusy(true,"Envoi…");
   window.__mcTypedReply = Date.now();
   const echo = addMessage("user", text);
-  try { try { await api("/api/chat",p); } catch(e) {
+  try { let r; try { r = await api("/api/chat",p); } catch(e) {
           if(!/Session (Telegram )?active/.test(e.message) || !(await syncSession())) throw e;
-          p.id=session; sessionStorage.setItem(PENDING,JSON.stringify(p)); await api("/api/chat",p); }
+          p.id=session; sessionStorage.setItem(PENDING,JSON.stringify(p)); r = await api("/api/chat",p); }
+        // Rotation automatique (session-lifecycle) : le serveur a ouvert une session neuve avant l'envoi.
+        // On la suit sans vider le fil : l'utilisateur ne voit pas de différence.
+        if(r && r.session && r.session !== session) {
+          session = r.session; p.id = session; sessionStorage.setItem(PENDING,JSON.stringify(p));
+          closeStream(); startStream();
+        }
         $("text").value=""; if(!stream || !stream.es) startStream(); await pollReply(); }
   catch(e) { echo.remove(); setBusy(true,e.message+" · Envoi non confirmé : ne pas renvoyer automatiquement. Consulte le fil."); }
 });
@@ -646,8 +652,14 @@ function missionFor(key,p,map) {
   return ({prof:"formations",gonasys:"hermes",lab3d:"lab3d",etsy:"lab3d",nvtr:"nvtr",arpagona:"arpagona"})[p.tenant] || "";
 }
 function waiting(t) { return t.status==="blocked" && t.block_kind==="needs_input" || t.status==="needs_input"; }
+// Sans responsable : champ natif assignee vide. Pas de badge pour une attente humaine, une carte terminée/archivée ou une ombrelle (sans responsable par choix).
+function unowned(t) {
+  const umbrellas=Object.values((snapshot&&snapshot.mapping&&snapshot.mapping.umbrellas)||{});
+  return !String(t.assignee||"").trim() && !waiting(t) && t.block_kind!=="needs_input" && !["done","archived"].includes(t.status) && !umbrellas.includes(t.id);
+}
 function taskButton(t) {
-  const b=node("button",t.title,"task"+(waiting(t)?" needs-input":""));
+  const b=node("button",t.title,"task"+(waiting(t)?" needs-input":"")+(unowned(t)?" unowned":""));
+  if(unowned(t)) b.append(node("span","Sans responsable","badge-unowned"));
   b.append(node("small",(t.tenant || "Sans tenant")+" · "+(waiting(t)?"Attend ta décision":t.assignee || "Non affectée")));
   b.onclick=()=>openCard(t.id); return b;
 }

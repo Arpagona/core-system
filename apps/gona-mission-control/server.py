@@ -22,6 +22,7 @@ import bridge
 import gate
 import config
 import backend_api
+import session_rotation
 
 ROOT = Path(__file__).resolve().parent
 PROFILE = config.PROFILE
@@ -137,6 +138,34 @@ GATEWAY_UNIT = 'hermes-gateway.service'
 GRACEFUL = ['systemctl', '--user', 'kill', '--kill-whom=main', '-s', 'SIGUSR1', GATEWAY_UNIT]
 
 
+def gateway_new(sid):
+    """Plugin mc-new (profil gpt5) : appelle le vrai /new du gateway sur la session Telegram vivante."""
+    hermes = str(HERMES)
+    env = dict(os.environ, HERMES_HOME=str(PROFILE), PYTHONPATH=hermes)
+    r = subprocess.run([hermes + '/venv/bin/python', str(ROOT / 'gateway_new.py')], input=json.dumps({'id': sid}),
+                       capture_output=True, text=True, env=env, timeout=90)
+    return json.loads(r.stdout or '{}')
+
+
+def rotate_if_due(sid):
+    """Mode Telegram : avant un envoi, tourne la session si la politique session-lifecycle l'exige.
+    Renvoie (session à utiliser, raison | None). En cas de doute ou d'échec, on garde la session
+    courante : le message part quand même, rien n'est perdu."""
+    try:
+        p = session_rotation.policy(PROFILE)
+        why = session_rotation.reason(p, session_rotation.last_user_activity(PROFILE, sid)) if p else None
+        if not why or not idle_state(sid):
+            return sid, None
+        out = gateway_new(sid)
+        new = out.get('new_session_id') if out.get('ok') else None
+        if not isinstance(new, str) or not new or new == sid:
+            return sid, None
+        session_rotation.record_rotation(PROFILE, sid, new, why)
+        return new, why
+    except Exception:
+        return sid, None
+
+
 def command(sid, text):
     """Commandes « / » du chat. Jamais transmises à l'agent comme message.
     /restart : SIGUSR1 au gateway = redémarrage natif « quand inactif » (comme /restart Telegram).
@@ -166,13 +195,8 @@ def command(sid, text):
         return {'ok': True, 'kind': 'info', 'text': 'Redémarrage du gateway demandé. Il attend la fin du travail en cours, '
                 'puis redémarre (comme /restart dans Telegram). Le chat revient seul dans une minute environ.'}
     if name in ('new', 'reset'):
-        # Plugin mc-new (profil gpt5) : appelle le vrai /new du gateway sur la session Telegram vivante.
-        hermes = str(HERMES)
-        env = dict(os.environ, HERMES_HOME=str(PROFILE), PYTHONPATH=hermes)
         try:
-            r = subprocess.run([hermes + '/venv/bin/python', str(ROOT / 'gateway_new.py')], input=json.dumps({'id': sid}),
-                               capture_output=True, text=True, env=env, timeout=90)
-            out = json.loads(r.stdout or '{}')
+            out = gateway_new(sid)
         except Exception:
             return {'ok': False, 'error': 'Résultat /new incertain : vérifie le fil avant de recommencer.'}
         if out.get('ok'):
@@ -359,7 +383,7 @@ class Handler(BaseHTTPRequestHandler):
             if hmac.compare_digest(q['t'][0], TOKEN):
                 return self.send(303, b'', 'text/plain', COOKIE, '/')
             return self.send(401, {'error':'Jeton invalide'})
-        if u.path in ('/', '/index.html', '/app.js', '/markdown.js', '/style.css', '/alpha.css', '/logo.png', '/voice.js'):
+        if u.path in ('/', '/index.html', '/app.js', '/markdown.js', '/style.css', '/alpha.css', '/logo.png', '/voice.js', '/kiosk.js'):
             f = ROOT / 'web' / ('index.html' if u.path == '/' else u.path[1:])
             return self.send(200, f.read_bytes(), mimetypes.guess_type(f)[0] or 'text/plain')
         if not self.authorized():
@@ -438,6 +462,13 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(200, {'ok':True}, cookie=COOKIE)
             if not self.authorized():
                 return self.send(401, {'error':'Authentification requise'})
+            if self.path == '/api/kiosk/close':
+                try:
+                    import imac_kiosk_api
+                except ImportError:
+                    return self.send(404, {'error':'Indisponible'})
+                st, data = imac_kiosk_api.close(self.headers.get('Host',''))
+                return self.send(st, data)
             if self.path == '/api/logout':
                 return self.send(200, {'ok':True}, cookie='')
             if self.path == '/api/chat':
@@ -447,7 +478,19 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError('Message invalide ou commande non prise en charge')
                 if not isinstance(submission,str) or not re.fullmatch(r'imac-mc-[a-zA-Z0-9_-]{8,80}', submission):
                     raise ValueError('Clé stable requise')
-                r = API.send(sid, text, submission) if API else old_api('/api/channel/send', {'id':sid, 'profile':config.PROFILE_NAME, 'text':text, 'submission_id':submission})
+                rotated = None
+                if not API:
+                    sid, rotated = rotate_if_due(sid)
+                for attempt in range(4 if rotated else 1):
+                    try:
+                        r = API.send(sid, text, submission) if API else old_api('/api/channel/send', {'id':sid, 'profile':config.PROFILE_NAME, 'text':text, 'submission_id':submission})
+                        break
+                    except RuntimeError as e:  # nouvelle session pas encore visible côté lecture
+                        if attempt == 3 or 'active' not in str(e):
+                            raise
+                        time.sleep(1.5)
+                if rotated or (isinstance(r, dict) and r.get('rotated')):
+                    r = dict(r, session=r.get('session') or sid, rotated=rotated or r.get('rotated'))
                 if not r.get('ok'):
                     return self.send(502, r)
                 return self.send(200, r)
