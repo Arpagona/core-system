@@ -1,10 +1,10 @@
 <!doctype html>
 <html lang="fr">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ARPAGONA · Agent Core</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="alpha.css"></head>
+<title>ARPAGONA · GONA</title><link rel="icon" href="data:,"><link rel="stylesheet" href="style.css"><link rel="stylesheet" href="alpha.css"></head>
 <body>
 <header class="bar">
- <a class="brand" href="/"><img src="logo.png" alt="" width="52" height="52"><h1>ARPAGONA <small>Agent Core</small></h1></a>
+ <a class="brand" href="/"><img src="logo.png" alt="" width="52" height="52"><h1>ARPAGONA <small>GONA</small></h1></a>
  <div class="bar-right"><time id="clock" aria-live="off"></time>
   <div id="who" hidden><a id="switch-atlas" class="btn ghost" href="#" hidden title="Basculer vers le banc Atlas (même session)">⇄ Atlas</a> <span id="who-name"></span> <button id="logout" class="btn ghost">Déconnexion</button></div>
   <button id="kiosk-close" class="kiosk-close" hidden aria-label="Fermer Agent Core" title="Fermer Agent Core (retour au bureau)">✕</button></div>
@@ -14,7 +14,7 @@
   <p class="eyebrow">Votre espace de pilotage</p><h2>Il prépare.<br><span>Vous décidez.</span></h2>
   <label for="login">Identifiant</label><input id="login" name="username" autocomplete="username" required maxlength="64" value="thibaud">
   <label for="password">Mot de passe</label><input id="password" name="password" type="password" autocomplete="current-password" required maxlength="256">
-  <p id="login-error" class="error" role="alert"></p><button class="btn primary" type="submit">Entrer dans Agent Core →</button>
+  <p id="login-error" class="error" role="alert"></p><button class="btn primary" type="submit">Entrer dans GONA →</button>
  </form>
 </main>
 <main id="app-view" class="layout" hidden>
@@ -24,7 +24,7 @@
  </nav>
  <div class="workspace">
  <section id="view-chat" class="chat panel">
-  <div class="section-head"><div><p class="eyebrow">Votre copilote</p><h2>Un fil, toutes vos décisions.</h2></div><span class="live">● En ligne</span></div>
+  <div class="section-head"><div><p class="eyebrow">Votre copilote</p></div><span class="live">● En ligne</span></div>
   <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
   <p id="chat-status" class="status" role="status"></p>
   <form id="chat-form" class="composer"><label for="text" class="sr">Votre message</label>

@@ -173,6 +173,43 @@ def media_file(raw):
     raise ValueError('Image hors zone autorisée')
 
 
+FILE_EXT = {'.apk': 'application/vnd.android.package-archive', '.pdf': 'application/pdf', '.zip': 'application/zip',
+            '.txt': 'text/plain; charset=utf-8', '.md': 'text/plain; charset=utf-8', '.csv': 'text/csv; charset=utf-8',
+            '.json': 'application/json', '.stl': 'model/stl', '.3mf': 'model/3mf', '.step': 'application/step',
+            '.stp': 'application/step', '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.gcode': 'text/plain; charset=utf-8'}
+DENIED_FILE_WORDS = ('secret', 'token', 'password', 'passwd', 'credential', '.jks', '.pass', 'private', 'id_rsa', '.env', '.ssh', '.gnupg')
+FILE_ROOTS = (PROFILE / 'cache', config.HOME / 'Downloads', config.HOME / 'Desktop', config.HOME / 'Documents',
+              config.HOME / 'lab3d-venture-zero', config.HOME / 'enseignement', PROFILE / 'reports') + config.MEDIA_EXTRA
+
+
+def download_file(raw):
+    """Fichier envoyé par l'agent (MEDIA:/chemin) : téléchargement forcé, extensions et dossiers listés."""
+    if not isinstance(raw, str) or not raw or len(raw) > 4096 or '\x00' in raw:
+        raise ValueError('Chemin invalide')
+    p = Path(os.path.expanduser(raw))
+    if not p.is_absolute():
+        raise ValueError('Chemin invalide')
+    p = p.resolve(strict=True)
+    if not p.is_file() or p.suffix.lower() not in FILE_EXT:
+        raise ValueError('Type de fichier non autorisé')
+    if p.stat().st_size > 100_000_000:
+        raise ValueError('Fichier trop volumineux')
+    low = str(p).lower()
+    if any(w in low for w in DENIED_FILE_WORDS):
+        raise ValueError('Chemin refusé')
+    for root in FILE_ROOTS:
+        try:
+            r = root.resolve()
+        except OSError:
+            continue
+        if r in p.parents:
+            return p, FILE_EXT[p.suffix.lower()]
+    raise ValueError('Fichier hors zone autorisée')
+
+
 GATEWAY_UNIT = 'hermes-gateway.service'
 GRACEFUL = ['systemctl', '--user', 'kill', '--kill-whom=main', '-s', 'SIGUSR1', GATEWAY_UNIT]
 
@@ -460,6 +497,15 @@ class Handler(BaseHTTPRequestHandler):
                 sid = q.get('id', [''])[0]
                 valid_session(sid)
                 return self.stream(sid)
+            if u.path == '/api/file':
+                path, ctype = download_file(q.get('path', [''])[0])
+                data = path.read_bytes()
+                self.send_response(200); self.send_header('Content-Type', ctype)
+                self.send_header('Content-Length', str(len(data)))
+                self.send_header('Content-Disposition', "attachment; filename*=UTF-8''" + urlencode({'': path.name})[1:])
+                self.send_header('X-Content-Type-Options', 'nosniff'); self.send_header('Cache-Control', 'no-store')
+                self.end_headers(); self.wfile.write(data)
+                return
             if u.path == '/api/media':
                 path, ctype = media_file(q.get('path', [''])[0])
                 return self.send(200, path.read_bytes(), ctype)

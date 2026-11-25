@@ -102,3 +102,5 @@ details.column[open]{opacity:.85}
 
 .attach-list{display:flex;flex-wrap:wrap;gap:4px;margin-right:auto}
 .attach-list .btn{font-size:12px;padding:4px 8px}
+
+.msg-file{display:inline-block;margin:4px 0;padding:6px 10px;border:1px solid #4cd7f6;border-radius:8px;color:#4cd7f6;text-decoration:none}

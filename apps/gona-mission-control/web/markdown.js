@@ -3,6 +3,7 @@
 (function (root) {
   const ENTITIES = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
   const MEDIA = /MEDIA:((?:\/|~\/)[^\s<>"']+?\.(?:png|jpe?g|gif|webp|bmp))/gi;
+  const FILE = /MEDIA:((?:\/|~\/)[^\s<>"']+?\.(?:apk|pdf|zip|txt|md|csv|json|stl|3mf|step|stp|docx|xlsx|pptx|mp3|mp4|gcode))/gi;
   const esc = s => String(s).replace(/[&<>"']/g, c => ENTITIES[c]);
 
   function inlineText(text) {
@@ -11,7 +12,13 @@
       media.push(p);
       return "\u0000M" + (media.length - 1) + "\u0000";
     });
+    const files = [];
+    s = s.replace(FILE, (_, p) => { files.push(p); return "\u0000F" + (files.length - 1) + "\u0000"; });
     s = esc(s);
+    s = s.replace(/\u0000F(\d+)\u0000/g, (_, i) => {
+      const p = files[+i];
+      return '<a class="msg-file" href="/api/file?path=' + encodeURIComponent(p) + '" download>📎 ' + esc(p.split("/").pop()) + '</a>';
+    });
     s = s.replace(/\u0000M(\d+)\u0000/g, (_, i) =>
       '<img class="msg-media" src="/api/media?path=' + encodeURIComponent(media[+i]) + '" alt="" loading="lazy">');
     s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
