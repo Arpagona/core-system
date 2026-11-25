@@ -11,7 +11,7 @@
   if (location.port === "18710") {
     x.hidden = false;
     x.addEventListener("click", function () {
-      if (!confirm("Fermer Mission Control et revenir au bureau ?")) return;
+      if (!confirm("Fermer Agent Core et revenir au bureau ?")) return;
       fetch("/api/kiosk/close", { method: "POST", headers: { "X-Gona": "1", "Content-Type": "application/json" }, body: "{}" });
     });
   }
