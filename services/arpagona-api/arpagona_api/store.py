@@ -123,6 +123,8 @@ class Store:
             self._db.execute("PRAGMA foreign_keys=ON")
             self._db.executescript(SCHEMA)
             self._migrate()
+            from .budget import BudgetLedger
+            self.budget = BudgetLedger(self._db, self._lock)
             # Une seule conversation ouverte par compte ; /new ferme la précédente.
             self._db.execute("CREATE UNIQUE INDEX IF NOT EXISTS conversations_open"
                              " ON conversations(user_id) WHERE closed_at IS NULL")
@@ -199,7 +201,7 @@ class Store:
         cur = self._run(
             "INSERT INTO users(id, login, display_name, role, pw_salt, pw_hash, created_at)"
             " VALUES ((SELECT COALESCE(MAX(v),0)+1 FROM (SELECT id AS v FROM users"
-            " UNION ALL SELECT user_id AS v FROM audit)),?,?,"
+            " UNION ALL SELECT user_id AS v FROM audit UNION ALL SELECT user_id AS v FROM budget_entries)),?,?,"
             " CASE WHEN EXISTS(SELECT 1 FROM users) THEN ? ELSE 'admin' END,?,?,?)",
             (login, display_name, role, salt, _hash_password(password, salt), time.time()),
         )
@@ -612,5 +614,6 @@ class Store:
         data["engagements"] = rows("SELECT * FROM engagements" + scope + " ORDER BY id", args)
         data["drafts"] = rows("SELECT * FROM drafts" + scope + " ORDER BY id", args)
         data["missions"] = rows("SELECT * FROM missions" + scope + " ORDER BY id", args)
+        data["budget"] = rows("SELECT * FROM budget_entries" + scope + " ORDER BY created_at,key", args)
         data["audit"] = rows("SELECT * FROM audit" + scope + " ORDER BY id", args)
         return data

@@ -197,7 +197,10 @@ def gestionnaire(moteur: Moteur):
             if not run:
                 return self._json(404, {"error": "exécution inconnue"})
             if not m.group(2):
-                return self._json(200, {"run_id": run.run_id, "status": run.status, "output": run.output})
+                # Coût réellement nul : CE simulateur n'appelle aucun fournisseur.
+                # Ne pas appliquer cette valeur par défaut au vrai moteur.
+                return self._json(200, {"run_id": run.run_id, "status": run.status,
+                                        "output": run.output, "usage": {"cost_usd": 0.0}})
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream")
             self.send_header("Connection", "close")

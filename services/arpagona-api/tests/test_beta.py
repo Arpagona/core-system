@@ -92,6 +92,58 @@ class BetaTest(unittest.TestCase):
         return next(d for d in listed if d["id"] == draft["id"])
 
     # --- missions ---------------------------------------------------------
+    def test_budget_reserve_avant_appel_moteur(self):
+        from unittest.mock import patch
+        original = self.app.hermes.start_run
+        observed = []
+        def start(*args, **kwargs):
+            observed.append(self.store.budget.snapshot(self.app.now())['reserve_usd'])
+            return original(*args, **kwargs)
+        with patch.object(self.app.hermes, 'start_run', side_effect=start):
+            self.assertEqual(self.alice.call('POST', '/api/chat', {'text': 'test synthétique'})[0], 200)
+        self.assertEqual(observed, [.5])
+
+    def test_budget_cout_inconnu_bloque_aussi_autre_compte(self):
+        from unittest.mock import patch
+        original = self.app.hermes.start_run
+        def start(*args, **kwargs):
+            run = original(*args, **kwargs)
+            self.engine.costs[run] = float('nan')
+            return run
+        with patch.object(self.app.hermes, 'start_run', side_effect=start):
+            self.assertEqual(self.alice.call('POST', '/api/chat', {'text': 'test synthétique'})[0], 200)
+        before = len(self.engine.runs)
+        status, body, _ = self.bruno.call('POST', '/api/chat', {'text': 'ne pas facturer'})
+        self.assertEqual(status, 429, body)
+        self.assertEqual(len(self.engine.runs), before)
+
+    def test_echeance_respecte_la_meme_limite(self):
+        import time
+        from arpagona_api.server import run_due_engagement
+        self.app.max_day_usd = .25
+        assert self.alice_user is not None
+        self.store.add_engagement(self.alice_user['id'], 'Fictif', 'Recette', 'relancer',
+                                  time.time()-1, '+0100', 'test', 'certain', None)
+        due = self.store.claim_due(time.time())
+        assert due is not None
+        run_due_engagement(self.app, dict(due))
+        self.assertEqual(len(self.engine.runs), 0)
+
+    def test_echeance_est_suivie_et_cout_comptabilise(self):
+        import time
+        from arpagona_api.server import run_due_engagement
+        assert self.alice_user is not None
+        self.store.add_engagement(self.alice_user['id'], 'Fictif', 'Recette', 'relancer',
+                                  time.time()-1, '+0100', 'test', 'certain', None)
+        due = self.store.claim_due(time.time())
+        assert due is not None
+        run_due_engagement(self.app, dict(due))
+        rows = self.store.missions(self.alice_user['id'])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['status'], 'terminee')
+        self.assertEqual(self.store.budget.snapshot(self.app.now())['mesure_usd'], .0025)
+        self.assertEqual(self.store.budget.snapshot(self.app.now())['reserve_usd'], 0)
+
     def test_chat_cree_une_mission_terminee_avec_cout(self):
         status, _, _ = self.alice.call("POST", "/api/chat", {"text": "prépare la relance Dupont"})
         self.assertEqual(status, 200)

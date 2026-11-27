@@ -5,6 +5,8 @@ import argparse
 import getpass
 import os
 import sys
+import time
+import json
 
 from .store import Store
 
@@ -26,9 +28,45 @@ def main() -> None:
     pwd.add_argument("--password-stdin", action="store_true")
     rem = sub.add_parser("del-user", help="supprimer un compte et ses données")
     rem.add_argument("login")
+    status = sub.add_parser('budget-status', help='réserves et coûts inconnus (opérateur local)')
+    status.add_argument('--operator', required=True, help='compte administrateur responsable')
+    rec = sub.add_parser('budget-reconcile', help='rapprocher un coût inconnu avec justificatif')
+    rec.add_argument('key')
+    rec.add_argument('--operator', required=True)
+    rec.add_argument('--cost-usd', required=True)
+    rec.add_argument('--evidence', required=True, help='référence du justificatif, jamais un secret')
+    rec.add_argument('--confirm', action='store_true', help='confirmer le rapprochement explicite')
     args = parser.parse_args()
 
     store = Store(os.environ.get("ARPAGONA_DB", "/var/lib/arpagona-api/arpagona.db"))
+    try:
+        _dispatch(store, args)
+    finally:
+        store.close()
+
+
+def _dispatch(store, args):
+    if args.cmd in ('budget-status', 'budget-reconcile'):
+        try:
+            operator = store._one('SELECT id,role FROM users WHERE login=?', (args.operator,))
+            if not operator or operator['role'] != 'admin':
+                sys.exit('opérateur administrateur requis')
+            if args.cmd == 'budget-reconcile':
+                if not args.confirm:
+                    sys.exit('aucun changement : --confirm requis après vérification du justificatif')
+                store.budget.reconcile_unknown(args.key, args.cost_usd, args.evidence,
+                                                operator['id'], time.time())
+                row = store._one('SELECT key,state,actual_micros FROM budget_entries WHERE key=?', (args.key,))
+                print(json.dumps(dict(row)))
+            else:
+                out = store.budget.snapshot(time.time())
+                out['historiques_inconnus'] = store.budget.legacy_unknown()
+                out['attentes'] = [dict(r) for r in store._all(
+                    "SELECT key,state,user_id,run_id FROM budget_entries WHERE state!='settled' ORDER BY created_at")]
+                print(json.dumps(out, ensure_ascii=False))
+        except (ValueError, PermissionError) as exc:
+            sys.exit(str(exc))
+        return
     if args.cmd == "del-user":
         found = store.delete_user(args.login)
         store.audit(None, "compte_supprimé" if found else "compte_introuvable", args.login)

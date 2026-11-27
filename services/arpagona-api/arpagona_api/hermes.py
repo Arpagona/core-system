@@ -32,7 +32,9 @@ class HermesClient:
         try:
             return urllib.request.urlopen(req, timeout=timeout or self._timeout)
         except urllib.error.HTTPError as exc:
-            raise HermesError(f"moteur : HTTP {exc.code}") from exc
+            code = exc.code
+            exc.close()
+            raise HermesError(f"moteur : HTTP {code}") from exc
         except (urllib.error.URLError, OSError) as exc:
             raise HermesError("moteur injoignable") from exc
 

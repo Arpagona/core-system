@@ -38,8 +38,8 @@ python3 -m unittest discover -s tests/dev -v
 ## Mission Control
 
 - Chat au centre : une conversation unique par compte, conservée entre les visites.
-- **Missions** : chaque demande devient une mission suivie (statut, durée, coût, résultat), arrêtable. Plafonds de dépense par mission et par jour, appliqués côté API.
-- **Approbations** : un brouillon porte une empreinte SHA-256 du texte approuvé ; l'envoi courriel est un second geste explicite, refusé si le contenu a changé. Un seul canal sortant : le courriel (SMTP).
+- **Missions** : chaque demande devient une mission suivie (statut, durée, coût, résultat), arrêtable. Consommation et réservations persistantes avant démarrage, appliquées côté API. Ce contrôle d’admission ne garantit pas le plafond de facturation d’un moteur déjà lancé.
+- **Approbations** : un brouillon porte une empreinte SHA-256 du destinataire, de l’objet, du corps exact et de l’expéditeur approuvés ; l'envoi courriel est un second geste explicite, refusé si le contenu a changé. Un seul canal sortant : le courriel (SMTP).
 - **Journal** : les 200 derniers événements (connexion, décision, envoi, refus), sans secret. Visible en entier par l'admin, limité à ses propres événements pour un membre.
 - **Rôles** : `admin` (comptes, export, journal complet) et `membre`. Le premier compte d'une instance est toujours admin.
 - **Export** : JSON complet des données métier, réservé à l'admin.
@@ -50,7 +50,9 @@ Configuration de l'envoi : `deploy/atlas/mail.env.example`. Sans SMTP configuré
 
 ### Accès réseau local (banc de test uniquement)
 
-`sudo bash /opt/arpagona/current/deploy/atlas/enable-mission-control-lan.sh` ouvre le port 8700 au seul réseau 192.168.68.0/24 (table nftables `arpagona_lan`, sans toucher SSH) et arme un retour arrière automatique à 180 s ; arrêter `arpagona-lan-rollback.timer` après vérification. Accès en HTTP, cookie non `Secure` : **mode test**. HTTPS obligatoire avant tout client.
+Le banc existant utilise HTTPS sur `https://192.168.68.240:8700/` et, via WireGuard, `https://10.68.100.1:8700/`. API interne sur loopback ; certificat signé par la CA locale ARPAGONA à installer dans les appareils autorisés. Installation, vérifications et rollback : [TLS local](deploy/atlas/tls-local/README.md). Le script historique `enable-mission-control-lan.sh` concerne un banc HTTP de test ; ne pas l’appliquer comme procédure normale à une instance HTTPS.
+
+Garde budgétaire et rapprochement des coûts inconnus : [contrat opérateur](docs/BUDGET-ADMISSION.md).
 
 Comptes : `python3 -m arpagona_api.manage add-user|set-password|del-user <login> --password-stdin` (en tant que `arpagona-api`).
 
