@@ -24,6 +24,9 @@
 - Un blocage demande une cause non vide. Son dernier motif est affiché depuis l’événement `blocked` du Kanban, lorsqu’il est disponible.
 - Actualisation : conserve les filtres et le focus quand les cartes n’ont pas changé. En cas de panne, les dernières cartes restent lisibles avec un avertissement d’ancienneté.
 - Déconnexion : efface la sélection, les cartes affichées et les brouillons de formulaire. Ce lot n’ajoute aucun stockage persistant de cartes ou de filtres dans le navigateur.
+- Session expirée en cours d’usage : retour à l’écran de connexion avec un message clair, au lieu d’un tableau figé qui refuse silencieusement les actions.
+- Sur petit écran, la croix de fermeture reste accessible pendant le défilement d’un détail long.
+- Message d’état vide utile : tableau vide, tout terminé, ou filtres trop étroits donnent trois consignes différentes.
 
 ## Contrat proposé
 
@@ -53,9 +56,28 @@ node --test tests/ui/kanban-view.test.cjs
 node tests/ui/kanban-browser.cjs .local/kanban-browser-proof
 ```
 
+Recherche de défauts sur cas limites, sur un second jeu de données séparé (port 18810) :
+
+```sh
+python3 dev/kanban_ergonomie_fixture.py --set adversarial --data "$PWD/.local/kanban-adversarial"
+ARPAGONA_AGENTS_FILE="$PWD/.local/kanban-adversarial/agents.json" \
+  python3 dev/lancer.py --port 18810 --moteur-port 18852 --kanban-port 18811 \
+  --data "$PWD/.local/kanban-adversarial"
+node tests/ui/kanban-adversarial.cjs .local/kanban-adversarial
+```
+
+Preuve que ces tests détectent bien les régressions : on casse volontairement huit règles protégées et la suite doit échouer à chaque fois.
+
+```sh
+python3 dev/kanban_ergonomie_fixture.py --set adversarial --data "$PWD/.local/kanban-adversarial" --reset
+python3 tests/ui/mutation-check.py .local/mutation.json
+```
+
+Réinitialiser le jeu avant chaque rejeu : les scénarios créent et terminent des cartes fictives.
+
 Node 22+ et Chrome sont requis pour la recette navigateur. Le script utilise un contexte navigateur isolé et un hôte `.localhost` distinct ; il ne remplace pas les cookies des sessions habituelles. Les tests JavaScript unitaires sont aussi lancés par `tests/dev/test_kanban_presentation.py` lorsque Node est présent.
 
-**Portée de la preuve :** vrai navigateur, API et passerelle réelles ; CLI Kanban et moteur simulés, données synthétiques. Le petit écran est une émulation 390 × 844, pas un essai sur un téléphone physique. Cette recette ne remplace pas les essais iMac/Android authentifiés et déployés du jalon bêta.
+**Portée de la preuve :** vrai navigateur (1440×1000, 390×844, 320×568), API et passerelle réelles ; CLI Kanban et moteur simulés, données synthétiques. La CLI simulée refuse désormais les mêmes transitions que le noyau natif (blocage seulement depuis `ready`/`running`, motif vide refusé, motif recopié en commentaire `BLOCKED: …`). Le petit écran est une émulation 390 × 844, pas un essai sur un téléphone physique. Cette recette ne remplace pas les essais iMac/Android authentifiés et déployés du jalon bêta.
 
 ## Hors de ce lot
 

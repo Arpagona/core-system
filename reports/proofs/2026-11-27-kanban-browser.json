@@ -1,117 +1,136 @@
 {
-  "passed": true,
-  "checks": [
-    {
-      "name": "vue dédiée desktop, six cartes actives",
-      "passed": true
-    },
-    {
-      "name": "mes cartes",
-      "passed": true
-    },
-    {
-      "name": "sans responsable",
-      "passed": true
-    },
-    {
-      "name": "recherche sans accents",
-      "passed": true
-    },
-    {
-      "name": "état vide et effacement",
-      "passed": true
-    },
-    {
-      "name": "terminées sur demande",
-      "passed": true
-    },
-    {
-      "name": "mode liste",
-      "passed": true
-    },
-    {
-      "name": "carte d’un collègue en lecture seule, API protectrice",
-      "passed": true
-    },
-    {
-      "name": "prise en charge explicite d’une carte non affectée",
-      "passed": true
-    },
-    {
-      "name": "responsables issus de l’équipe configurée",
-      "passed": true
-    },
-    {
-      "name": "création et responsable relus via API",
-      "passed": true
-    },
-    {
-      "name": "commentaire rendu comme texte, sans injection HTML",
-      "passed": true
-    },
-    {
-      "name": "motif de blocage requis, aucun blocage vide",
-      "passed": true
-    },
-    {
-      "name": "blocage avec cause persistée et affichée",
-      "passed": true
-    },
-    {
-      "name": "déblocage",
-      "passed": true
-    },
-    {
-      "name": "terminer puis disparition de la vue active",
-      "passed": true
-    },
-    {
-      "name": "focus et filtres préservés à l’actualisation",
-      "passed": true
-    },
-    {
-      "name": "erreur réseau visible, dernières cartes conservées",
-      "passed": true
-    },
-    {
-      "name": "mobile : liste par défaut et aucun débordement horizontal",
-      "passed": true
-    },
-    {
-      "name": "mobile : carte accessible au toucher et détail lisible",
-      "passed": true
-    },
-    {
-      "name": "déconnexion : filtres et brouillons effacés",
-      "passed": true
-    }
-  ],
-  "backend": "API et bridge réels, CLI/moteur simulés, données synthétiques",
-  "screenshots": [
-    "2026-11-27-kanban-desktop.png",
-    "2026-11-27-kanban-mobile.png"
-  ],
-  "recorded_at": "2026-11-27T14:02:55.090811+00:00",
+  "recorded_at": "2026-11-27T14:25:54.534027+00:00",
   "issue": "https://github.com/Arpagona/core-system/issues/78",
   "deployment": false,
-  "physical_device_test": false,
-  "local_tests": {
-    "api": 99,
-    "dev": 31,
-    "javascript": 13,
-    "javascript_included_in_dev": true
+  "browser": {
+    "suite_principale": {
+      "checks": 21,
+      "passed": true,
+      "names": [
+        "vue dédiée desktop, six cartes actives",
+        "mes cartes",
+        "sans responsable",
+        "recherche sans accents",
+        "état vide et effacement",
+        "terminées sur demande",
+        "mode liste",
+        "carte d’un collègue en lecture seule, API protectrice",
+        "prise en charge explicite d’une carte non affectée",
+        "responsables issus de l’équipe configurée",
+        "création et responsable relus via API",
+        "commentaire rendu comme texte, sans injection HTML",
+        "motif de blocage requis, aucun blocage vide",
+        "blocage avec cause persistée et affichée",
+        "déblocage",
+        "terminer puis disparition de la vue active",
+        "focus et filtres préservés à l’actualisation",
+        "erreur réseau visible, dernières cartes conservées",
+        "mobile : liste par défaut et aucun débordement horizontal",
+        "mobile : carte accessible au toucher et détail lisible",
+        "déconnexion : filtres et brouillons effacés"
+      ]
+    },
+    "suite_adversariale": {
+      "checks": 11,
+      "passed": true,
+      "names": [
+        "statut inconnu visible et honnête, sans casser la vue",
+        "jeton très long : pas de débordement horizontal de page",
+        "petit écran 320×568 : détail long défilable, fin atteignable",
+        "aide honnête quand tout est terminé (aucune carte active)",
+        "touche Entrée dans le formulaire crée la carte",
+        "réponse lente ne réécrit pas une carte ouverte plus tard",
+        "double clic sur Terminer : une seule clôture",
+        "brouillon de commentaire conservé pendant une actualisation",
+        "motif de blocage fait uniquement d’espaces refusé",
+        "blocage refusé par le noyau sur une carte à faire",
+        "session expirée : retour à l’écran de connexion"
+      ]
+    }
   },
+  "mutation": {
+    "total": 8,
+    "detected": 8,
+    "survivors": [],
+    "restore_verified": true,
+    "detail": [
+      {
+        "mutation": "recherche : un seul terme suffirait",
+        "fichier": "kanban-view.js",
+        "detectee": true
+      },
+      {
+        "mutation": "recherche : accents et casse non ignorés",
+        "fichier": "kanban-view.js",
+        "detectee": true
+      },
+      {
+        "mutation": "archives réaffichées comme du travail actif",
+        "fichier": "kanban-view.js",
+        "detectee": true
+      },
+      {
+        "mutation": "filtre « mes cartes » inopérant",
+        "fichier": "kanban-view.js",
+        "detectee": true
+      },
+      {
+        "mutation": "priorité la plus haute reléguée en fin de liste",
+        "fichier": "kanban-view.js",
+        "detectee": true
+      },
+      {
+        "mutation": "réponse tardive réécrit la carte ouverte",
+        "fichier": "app.js",
+        "detectee": true
+      },
+      {
+        "mutation": "session expirée laisse un tableau mort",
+        "fichier": "app.js",
+        "detectee": true
+      },
+      {
+        "mutation": "état vide muet sur des cartes toutes terminées",
+        "fichier": "app.js",
+        "detectee": true
+      }
+    ]
+  },
+  "unit": {
+    "api": "99 OK (75 s)",
+    "dev": "31 OK (4,8 s)",
+    "javascript": "13 OK"
+  },
+  "bugs_found_and_fixed": [
+    "fermeture hors écran sur détail long en 320×568",
+    "message d’état vide trompeur quand toutes les cartes sont terminées",
+    "session expirée sans retour à l’écran de connexion"
+  ],
+  "scope": "API et passerelle réelles ; CLI Kanban simulée fidèle au noyau ; moteur simulé ; données synthétiques ; contextes navigateur isolés",
+  "not_proven": [
+    "téléphone et iMac physiques",
+    "moteur Hermès réel",
+    "dispatcher natif",
+    "isolation entre instances réelles"
+  ],
+  "screenshots": [
+    "2026-11-27-kanban-desktop.png",
+    "2026-11-27-kanban-mobile.png",
+    "2026-11-27-kanban-320x568.png"
+  ],
   "source_sha256": {
-    "apps/mission-control-web/app.js": "65c8b210512e8e3c8b1cb3a933cb1d05e5af226f73da59d59aca11e6c2513594",
+    "apps/mission-control-web/app.js": "39d7a843c06c0efb50ec00d4dc6fe3ebb984729e0d934fb29d05cadff884ade7",
     "apps/mission-control-web/kanban-view.js": "450b79a91928f3356fcec187556b440898b4d70e081c7b9af8b9f3a93d9568c7",
     "apps/mission-control-web/index.html": "807ebc8111f6a1a6e4ce97302157c9aef34e239dbcb152fe86cb2add6a73bdce",
-    "apps/mission-control-web/style.css": "c1f51f516a2296476f44d4884a1b329aa8d42a52343aec03ddf5b785a62e06f2",
+    "apps/mission-control-web/style.css": "143742e25c5e33bbdcc327079f12b0c5260803596baeecdf24f11f19ef71850b",
     "services/arpagona-api/arpagona_api/server.py": "a7ed71aee0be3ec2a1691997b0a946a519c7e05810cf877ccce0b862893169a9",
     "services/arpagona-api/tests/test_agents_isolation.py": "c7fe187fbcddcb62faa13786734d50c0c6aaeec421eef79d603b23b505362fd1",
-    "dev/kanban_simule.py": "d8ed5fbd06f880a931eebb90ccc7038867abc626a2c974faedda6415049fffa2",
-    "dev/kanban_ergonomie_fixture.py": "3abe8570723b695fd7628edd0eb875481d072a9c27aa94a40405c06ef7771a13",
+    "dev/kanban_simule.py": "085d77543f45d92f3d1651b405754b0b1a137657e4fcaea0d54ffca996569eec",
+    "dev/kanban_ergonomie_fixture.py": "a6af00204b1d3c5e1a7eab11832077e5157ef36b4732bf90290c3272d7444003",
     "tests/dev/test_kanban_presentation.py": "8804b25818b29f67e114c4d35034c86a92078b79078fb318868cb1926e32cd29",
     "tests/ui/kanban-browser.cjs": "bc786378ff5a9f6d10dca0dac02a30ef9da352f60cb2142759b44a54d637d947",
-    "tests/ui/kanban-view.test.cjs": "f9adf22340925ec505532d5301d0d9d84134cdae0a4dc449beed319057b424cc"
+    "tests/ui/kanban-adversarial.cjs": "8aec08ccf95f541bcd73e2a175e56d63a02405f7f90c7be85cdb2f7441c72805",
+    "tests/ui/kanban-view.test.cjs": "f9adf22340925ec505532d5301d0d9d84134cdae0a4dc449beed319057b424cc",
+    "tests/ui/mutation-check.py": "1c8dc749d5c2758bb645dfac907aae6e6ed3a23e333b368fc062b7478d1a8384"
   }
 }

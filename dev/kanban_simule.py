@@ -80,11 +80,38 @@ def main(argv: list[str]) -> int:
                 t["assignee"] = positionnels[1]
             elif op == "comment":
                 auteur = next((o.split("=", 1)[1] for o in options if o.startswith("--author=")), "utilisateur")
+                if not positionnels[1].strip():
+                    print("commentaire vide refusé", file=sys.stderr)
+                    return 1
                 t["comments"].append({"author": auteur, "body": positionnels[1], "created_at": int(time.time())})
             elif op in {"complete", "block", "unblock", "archive"}:
+                # Transitions refusées comme par le noyau natif (block_task/complete_task).
                 if op == "block":
-                    t.setdefault("events",[]).append({"kind":"blocked","payload":{"reason":positionnels[1]},"created_at":int(time.time())})
-                t["status"] = {"complete": "done", "block": "blocked", "unblock": "ready", "archive": "archived"}[op]
+                    if t["status"] not in {"ready", "running"}:
+                        print(f"cannot block {ident}: statut {t['status']}", file=sys.stderr)
+                        return 1
+                    motif = positionnels[1] if len(positionnels) > 1 else ""
+                    if not motif.strip():
+                        print("cannot block: motif vide", file=sys.stderr)
+                        return 1
+                    auteur = next((o.split("=", 1)[1] for o in options if o.startswith("--author=")), "utilisateur")
+                    # La CLI native enregistre d'abord le motif en commentaire « BLOCKED: … ».
+                    t["comments"].append({"author": auteur, "body": "BLOCKED: " + motif, "created_at": int(time.time())})
+                    t.setdefault("events", []).append({"kind": "blocked", "payload": {"reason": motif, "kind": None,
+                        "source_status": t["status"], "recurrences": 1}, "created_at": int(time.time())})
+                    t["status"] = "blocked"
+                elif op == "complete":
+                    if t["status"] in {"done", "archived", "triage"}:
+                        print(f"cannot complete {ident}: statut {t['status']}", file=sys.stderr)
+                        return 1
+                    t["status"] = "done"
+                elif op == "unblock":
+                    if t["status"] not in {"blocked", "scheduled", "triage"}:
+                        print(f"cannot unblock {ident}: statut {t['status']}", file=sys.stderr)
+                        return 1
+                    t["status"] = "ready"
+                else:
+                    t["status"] = "archived"
             else:
                 print("opération non simulée", file=sys.stderr)
                 return 2

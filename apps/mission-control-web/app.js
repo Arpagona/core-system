@@ -398,9 +398,16 @@ let kanbanScope = "all";
 let meUser = null;
 let kanbanTasks = [], kanbanLoadSequence = 0, cardOpenSequence = 0;
 let kanbanSignature = "";
+function sessionExpired() {
+  resetKanban();
+  show("login");
+  $("login-error").textContent = "Session expirée. Reconnectez-vous pour continuer.";
+  $("login").focus();
+}
 async function kanban(op, data) {
   const res = await fetch("/api/kanban/" + op, data ? {method:"POST", headers:HEADERS, body:JSON.stringify(data)} : {});
-  const result = await res.json();
+  const result = await res.json().catch(() => ({}));
+  if (res.status === 401) { sessionExpired(); throw new Error("Session expirée : reconnectez-vous."); }
   if (!res.ok) throw new Error(result.error || "Kanban indisponible");
   return result;
 }
@@ -452,7 +459,12 @@ function renderKanban() {
     btn.addEventListener("click",()=>openCard(card.id)); return btn;
   }
   if (!cards.length) {
-    board.append(node("p",kanbanTasks.length ? "Aucune carte dans cette sélection. Effacez les filtres pour revoir le tableau." : "Le tableau est vide. Créez une carte avec un résultat attendu et un responsable.","kanban-empty"));
+    const restantes = kanbanTasks.filter(t=>t.status !== "done" && t.status !== "archived").length;
+    let aide;
+    if (!kanbanTasks.length) aide = "Le tableau est vide. Créez une carte avec un résultat attendu et un responsable.";
+    else if (!restantes && !showDone) aide = "Toutes les cartes sont terminées. Cochez « Afficher les terminées » pour les revoir.";
+    else aide = "Aucune carte dans cette sélection. Effacez les filtres pour revoir le tableau.";
+    board.append(node("p",aide,"kanban-empty"));
   } else if (mode === "list") {
     for (const card of KanbanView.order(cards)) board.append(cardButton(card));
   } else {

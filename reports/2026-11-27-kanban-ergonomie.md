@@ -35,6 +35,28 @@ Preuves :
 - [`proofs/2026-11-27-kanban-mobile.png`](proofs/2026-11-27-kanban-mobile.png).
 - Logs `proofs/2026-11-27-kanban-api.log`, `...-dev.log`, `...-checks.log`.
 
+## Chasse aux bugs (après la première revue)
+
+Onze scénarios adversariaux ont été exécutés sur un jeu de données séparé. Trois défauts réels ont été trouvés puis corrigés, avec le test qui échoue avant correction et passe après.
+
+| Défaut trouvé | Effet utilisateur | Correction |
+| --- | --- | --- |
+| Détail long en 320×568 | La croix de fermeture défilait hors écran : impossible de fermer sans remonter | Croix rendue fixe en haut du détail ; mesure : 49–101 px sur 568, largeur 49 px |
+| Message d’état vide | « Effacez les filtres » alors que tout était simplement terminé | Trois consignes distinctes : tableau vide, tout terminé, filtres trop étroits |
+| Session expirée | Tableau affiché mais toute action refusée, sans retour à la connexion | `401` → écran de connexion avec message explicite |
+
+Défauts vérifiés comme **non** présents : recherche multi-termes et sans accents, débordement horizontal sur un jeton de 250 caractères, réponse réseau lente écrasant une carte ouverte plus tard, double clic sur « Terminer », brouillon de commentaire pendant l’actualisation, motif de blocage fait d’espaces, blocage d’une carte non démarrée, statut inconnu, création au clavier (touche Entrée).
+
+Preuve de détection : huit mutations volontaires (recherche, accents, archives, filtre « mes cartes », tri, réponse tardive, session expirée, message d’état vide) sont **toutes détectées** ; chaque fichier muté est restauré à l’octet près, empreinte SHA-256 vérifiée. Voir `tests/ui/mutation-check.py` et `reports/proofs/2026-11-27-kanban-browser.json`.
+
+Fidélité renforcée de la CLI simulée, alignée sur le noyau natif : blocage refusé hors `ready`/`running`, motif vide refusé, motif recopié en commentaire `BLOCKED: …`, clôture refusée sur `done`/`archived`/`triage`.
+
+Résultats cumulés : API **99 OK**, développement **31 OK**, JavaScript **13 OK**, navigateur **21 + 11 scénarios OK**, mutations **8/8 détectées**.
+
+## État du chantier
+
+Travail commité sur la branche, PR en brouillon, CI verte sur le commit exact. **Aucune fusion ni déploiement au moment de cette rédaction** : la suite de ce document couvre la mise en service.
+
 ## Corrections obtenues pendant la recette
 
 - L’événement asynchrone `close` d’un ancien dialogue pouvait annuler l’ouverture suivante. Invalidation déplacée au geste de fermeture/annulation ; protection contre les réponses périmées conservée.
