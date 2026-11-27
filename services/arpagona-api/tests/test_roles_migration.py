@@ -21,6 +21,19 @@ class RoleMigrationTest(unittest.TestCase):
             finally:
                 store.close()
 
+    def test_deleted_account_audit_is_not_attached_to_next_account(self):
+        store = Store(':memory:')
+        try:
+            store.add_user('owner', 'Owner', 'fictif-test-password')
+            old = store.add_user('old', 'Old', 'fictif-test-password')
+            store.audit(old, 'private_old_event', 'fictif')
+            store.delete_user('old')
+            new = store.add_user('new', 'New', 'fictif-test-password')
+            self.assertGreater(new, old)
+            self.assertEqual(store.audit_rows(user_id=new), [])
+        finally:
+            store.close()
+
     def test_last_admin_cannot_be_demoted(self):
         store = Store(':memory:')
         try:

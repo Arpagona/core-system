@@ -192,12 +192,15 @@ class Store:
             raise ValueError("mot de passe trop court (12 caractères minimum)")
         if role not in ("admin", "membre"):
             raise ValueError("rôle invalide")
-        # Le tout premier compte d'une instance est administrateur : sinon personne ne peut gérer.
-        if not self._one("SELECT 1 FROM users LIMIT 1"):
-            role = "admin"
         salt = secrets.token_bytes(16)
+        # SQLite peut réutiliser un INTEGER PRIMARY KEY supprimé. L'audit conservé
+        # porterait alors les événements d'un ancien compte vers le nouveau : interdit.
+        # Allocation et rôle du premier compte dans UNE instruction SQLite sérialisée.
         cur = self._run(
-            "INSERT INTO users(login, display_name, role, pw_salt, pw_hash, created_at) VALUES (?,?,?,?,?,?)",
+            "INSERT INTO users(id, login, display_name, role, pw_salt, pw_hash, created_at)"
+            " VALUES ((SELECT COALESCE(MAX(v),0)+1 FROM (SELECT id AS v FROM users"
+            " UNION ALL SELECT user_id AS v FROM audit)),?,?,"
+            " CASE WHEN EXISTS(SELECT 1 FROM users) THEN ? ELSE 'admin' END,?,?,?)",
             (login, display_name, role, salt, _hash_password(password, salt), time.time()),
         )
         return int(cur.lastrowid or 0)
