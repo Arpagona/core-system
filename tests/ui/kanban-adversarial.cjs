@@ -136,6 +136,26 @@ async function login(){
    await login();await rpc('Page.reload');
    assert.ok(await wait(`!document.getElementById('app-view').hidden`),'reconnexion impossible');
  });
+ await check('un client déjà ouvert se recharge après un déploiement',async()=>{
+   const fs2=require('node:fs'),crypto=require('node:crypto');
+   const css=path.resolve(__dirname,'../../apps/mission-control-web/style.css');
+   const before=fs2.readFileSync(css);
+   const digest=x=>crypto.createHash('sha256').update(x).digest('hex');
+   try {
+     const version1=await js(`fetch('/api/health',{cache:'no-store'}).then(r=>r.json()).then(d=>d.ui)`);
+     assert.ok(/^[0-9a-f]{12}$/.test(version1||''),'empreinte d’interface absente de /api/health : '+version1);
+     await js(`window.__avantRechargement=true;window.__versionInitiale=${JSON.stringify(version1)}`);
+     fs2.appendFileSync(css,'\n/* contrôle de déploiement fictif */\n');
+     const version2=await js(`fetch('/api/health',{cache:'no-store'}).then(r=>r.json()).then(d=>d.ui)`);
+     assert.notEqual(version2,version1,'empreinte inchangée après modification servie');
+     await js('checkUiVersion()');
+     const reloaded=await wait(`typeof window.__avantRechargement==='undefined' && document.readyState==='complete'`,8000);
+     assert.ok(reloaded,'le client n’a pas rechargé la nouvelle interface');
+   } finally {
+     fs2.writeFileSync(css,before);
+     assert.equal(digest(fs2.readFileSync(css)),digest(before),'style.css non restauré à l’identique');
+   }
+ });
  const failed=results.filter(r=>!r.passed);
  fs.writeFileSync(path.join(out,'adversarial-results.json'),JSON.stringify({passed:failed.length===0,total:results.length,failed:failed.length,results,backend:'API et bridge réels, CLI simulée fidèle, données synthétiques'},null,2));
  console.log(JSON.stringify({passed:failed.length===0,total:results.length,failed:failed.length}));

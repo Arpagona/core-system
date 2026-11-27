@@ -25,10 +25,13 @@
 - Actualisation : conserve les filtres et le focus quand les cartes n’ont pas changé. En cas de panne, les dernières cartes restent lisibles avec un avertissement d’ancienneté.
 - Déconnexion : efface la sélection, les cartes affichées et les brouillons de formulaire. Ce lot n’ajoute aucun stockage persistant de cartes ou de filtres dans le navigateur.
 - Session expirée en cours d’usage : retour à l’écran de connexion avec un message clair, au lieu d’un tableau figé qui refuse silencieusement les actions.
+- **Mise à jour sans manipuler l’appareil** : `GET /api/health` publie une empreinte courte des fichiers d’interface (`ui`). Un client déjà ouvert (application Android, onglet de bureau) compare cette empreinte au retour au premier plan et toutes les cinq minutes, puis se recharge si un déploiement a changé l’interface. Sans cela, une application laissée ouverte continuait d’afficher l’ancienne version après une mise à jour du serveur.
 - Sur petit écran, la croix de fermeture reste accessible pendant le défilement d’un détail long.
 - Message d’état vide utile : tableau vide, tout terminé, ou filtres trop étroits donnent trois consignes différentes.
 
 ## Contrat proposé
+
+`GET /api/health` ajoute **`ui`** : douze caractères hexadécimaux, empreinte des fichiers `index.html`, `app.js`, `kanban-view.js`, `style.css`. Aucune donnée métier, aucun secret ; le calcul est mis en cache sur la date et la taille des fichiers.
 
 `GET /api/me` ajoute **`team: string[]`** : identifiants des membres configurés pour l’instance, uniquement si le compte courant en fait partie. Une session absente reste `401` ; un compte non configuré reçoit une liste vide. Aucun jeton, URL moteur ou détail privé n’est exposé.
 

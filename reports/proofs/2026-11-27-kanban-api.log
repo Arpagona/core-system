@@ -85,7 +85,7 @@ test_deleted_account_audit_is_not_attached_to_next_account (test_roles_migration
 test_last_admin_cannot_be_demoted (test_roles_migration.RoleMigrationTest.test_last_admin_cannot_be_demoted) ... ok
 test_reopen_does_not_promote_oldest_member (test_roles_migration.RoleMigrationTest.test_reopen_does_not_promote_oldest_member) ... ok
 test_239_minutes (test_rotation.RotationTest.test_239_minutes) ... ok
-test_chaine_limitee_200 (test_rotation.RotationTest.test_chaine_limitee_200) ... /home/thibaud/projects/core-system-kanban/services/arpagona-api/arpagona_api/server.py:443: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x79da51694a90>
+test_chaine_limitee_200 (test_rotation.RotationTest.test_chaine_limitee_200) ... /home/thibaud/projects/core-system-kanban/services/arpagona-api/arpagona_api/server.py:474: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x70e912394220>
   {"id": r["id"], "role": r["role"], "text": r["content"], "status": r["status"], "at": r["created_at"], "conversation": r["conversation_id"]}
 ResourceWarning: Enable tracemalloc to get the object allocation traceback
 ok
@@ -103,8 +103,12 @@ test_migration_schema_recent_idempotente (test_store_migration.MigrationTest.tes
 test_session_lasts_90_days_and_survives_a_week (test_store_password.SessionDurationTest.test_session_lasts_90_days_and_survives_a_week) ... ok
 test_change_password_closes_sessions (test_store_password.SetPasswordTest.test_change_password_closes_sessions) ... ok
 test_unknown_and_short (test_store_password.SetPasswordTest.test_unknown_and_short) ... ok
+test_empreinte_change_des_qu_une_interface_est_modifiee (test_ui_version.UiVersionTest.test_empreinte_change_des_qu_une_interface_est_modifiee) ... ok
+test_empreinte_stable_sans_modification (test_ui_version.UiVersionTest.test_empreinte_stable_sans_modification) ... ok
+test_fichier_absent_ne_bloque_pas_le_calcul (test_ui_version.UiVersionTest.test_fichier_absent_ne_bloque_pas_le_calcul) ... ok
+test_repertoire_absent_ne_leve_pas (test_ui_version.UiVersionTest.test_repertoire_absent_ne_leve_pas) ... ok
 
 ----------------------------------------------------------------------
-Ran 99 tests in 75.051s
+Ran 103 tests in 79.267s
 
 OK

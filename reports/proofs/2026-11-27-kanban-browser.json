@@ -1,9 +1,8 @@
 {
-  "recorded_at": "2026-11-27T14:25:54.534027+00:00",
+  "recorded_at": "2026-11-27T14:49:06.072829+00:00",
   "issue": "https://github.com/Arpagona/core-system/issues/78",
-  "deployment": false,
   "browser": {
-    "suite_principale": {
+    "principale": {
       "checks": 21,
       "passed": true,
       "names": [
@@ -30,8 +29,8 @@
         "déconnexion : filtres et brouillons effacés"
       ]
     },
-    "suite_adversariale": {
-      "checks": 11,
+    "adversariale": {
+      "checks": 12,
       "passed": true,
       "names": [
         "statut inconnu visible et honnête, sans casser la vue",
@@ -44,13 +43,14 @@
         "brouillon de commentaire conservé pendant une actualisation",
         "motif de blocage fait uniquement d’espaces refusé",
         "blocage refusé par le noyau sur une carte à faire",
-        "session expirée : retour à l’écran de connexion"
+        "session expirée : retour à l’écran de connexion",
+        "un client déjà ouvert se recharge après un déploiement"
       ]
     }
   },
   "mutation": {
-    "total": 8,
-    "detected": 8,
+    "total": 9,
+    "detected": 9,
     "survivors": [],
     "restore_verified": true,
     "detail": [
@@ -90,6 +90,11 @@
         "detectee": true
       },
       {
+        "mutation": "client ouvert jamais rechargé après un déploiement",
+        "fichier": "app.js",
+        "detectee": true
+      },
+      {
         "mutation": "état vide muet sur des cartes toutes terminées",
         "fichier": "app.js",
         "detectee": true
@@ -97,40 +102,50 @@
     ]
   },
   "unit": {
-    "api": "99 OK (75 s)",
-    "dev": "31 OK (4,8 s)",
-    "javascript": "13 OK"
+    "api": "103 OK (79 s)",
+    "dev": "31 OK (4,2 s)",
+    "javascript": "14 OK"
   },
   "bugs_found_and_fixed": [
     "fermeture hors écran sur détail long en 320×568",
     "message d’état vide trompeur quand toutes les cartes sont terminées",
-    "session expirée sans retour à l’écran de connexion"
+    "session expirée sans retour à l’écran de connexion",
+    "application Android ouverte servant l’ancienne interface après un déploiement"
   ],
   "scope": "API et passerelle réelles ; CLI Kanban simulée fidèle au noyau ; moteur simulé ; données synthétiques ; contextes navigateur isolés",
+  "devices": {
+    "atlas_https": "200, interface exécutée dans la page déployée",
+    "rollback": "testé dans les deux sens",
+    "imac": "CA du banc présent, HTTPS 200, mêmes octets servis",
+    "android": "émulateur API 35, application 0.11-TLS connectée via WireGuard"
+  },
   "not_proven": [
-    "téléphone et iMac physiques",
-    "moteur Hermès réel",
-    "dispatcher natif",
+    "téléphone physique hors émulateur",
+    "moteur Hermès réel sur le banc local",
     "isolation entre instances réelles"
   ],
   "screenshots": [
     "2026-11-27-kanban-desktop.png",
     "2026-11-27-kanban-mobile.png",
-    "2026-11-27-kanban-320x568.png"
+    "2026-11-27-kanban-320x568.png",
+    "2026-11-27-kanban-android.png",
+    "2026-11-27-kanban-atlas.png"
   ],
   "source_sha256": {
-    "apps/mission-control-web/app.js": "39d7a843c06c0efb50ec00d4dc6fe3ebb984729e0d934fb29d05cadff884ade7",
-    "apps/mission-control-web/kanban-view.js": "450b79a91928f3356fcec187556b440898b4d70e081c7b9af8b9f3a93d9568c7",
+    "apps/mission-control-web/app.js": "27c5bbc7249014320aed7027235cabad43c1296e3d74da87f494e5da17f37ff2",
+    "apps/mission-control-web/kanban-view.js": "25f838ec1ec4d835e4600aca8bdd0362b7f17e4ac75396c35b930080dbca752b",
     "apps/mission-control-web/index.html": "807ebc8111f6a1a6e4ce97302157c9aef34e239dbcb152fe86cb2add6a73bdce",
     "apps/mission-control-web/style.css": "143742e25c5e33bbdcc327079f12b0c5260803596baeecdf24f11f19ef71850b",
-    "services/arpagona-api/arpagona_api/server.py": "a7ed71aee0be3ec2a1691997b0a946a519c7e05810cf877ccce0b862893169a9",
+    "apps/mission-control-web/sw.js": "79e0bd4ba6c6ed81b9d362e06563304504d062a4444eeacbd9f0f82193f75e88",
+    "services/arpagona-api/arpagona_api/server.py": "ac14d3b47ac2ba84d379cf184bf69f0078b99a501555a4fec5771db99bf94a80",
     "services/arpagona-api/tests/test_agents_isolation.py": "c7fe187fbcddcb62faa13786734d50c0c6aaeec421eef79d603b23b505362fd1",
+    "services/arpagona-api/tests/test_ui_version.py": "45439a3bb11645a71315053b498c80a88c895f49cfd49b1eb85d6f2e34526d1d",
     "dev/kanban_simule.py": "085d77543f45d92f3d1651b405754b0b1a137657e4fcaea0d54ffca996569eec",
     "dev/kanban_ergonomie_fixture.py": "a6af00204b1d3c5e1a7eab11832077e5157ef36b4732bf90290c3272d7444003",
     "tests/dev/test_kanban_presentation.py": "8804b25818b29f67e114c4d35034c86a92078b79078fb318868cb1926e32cd29",
     "tests/ui/kanban-browser.cjs": "bc786378ff5a9f6d10dca0dac02a30ef9da352f60cb2142759b44a54d637d947",
-    "tests/ui/kanban-adversarial.cjs": "8aec08ccf95f541bcd73e2a175e56d63a02405f7f90c7be85cdb2f7441c72805",
-    "tests/ui/kanban-view.test.cjs": "f9adf22340925ec505532d5301d0d9d84134cdae0a4dc449beed319057b424cc",
-    "tests/ui/mutation-check.py": "1c8dc749d5c2758bb645dfac907aae6e6ed3a23e333b368fc062b7478d1a8384"
+    "tests/ui/kanban-adversarial.cjs": "9508d32cf9a427e74aeebb2b67e17bc24ebd0b0616a96e8d8beabb56b88e5603",
+    "tests/ui/kanban-view.test.cjs": "dd659272b8fef543195ea407a7e1c6f50b6db9d5974c1f3c3e33f934b658c3e1",
+    "tests/ui/mutation-check.py": "0263bf5b47fd30b4ea209e7fe805945b8b778113a2357ec29a73028dadf12b8f"
   }
 }

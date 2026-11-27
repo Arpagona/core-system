@@ -411,6 +411,21 @@ async function kanban(op, data) {
   if (!res.ok) throw new Error(result.error || "Kanban indisponible");
   return result;
 }
+// Version de l'interface servie : détecte un déploiement pour les clients déjà ouverts.
+let uiVersion = null;
+async function checkUiVersion() {
+  try {
+    const res = await fetch("/api/health", {cache:"no-store"});
+    if (!res.ok) return;
+    const current = (await res.json()).ui;
+    if (!current) return;
+    const stale = KanbanView.reloadNeeded(uiVersion, current);
+    uiVersion = current;
+    if (stale) location.reload();
+  } catch (err) { /* réseau indisponible : réessai au prochain passage au premier plan */ }
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) checkUiVersion(); });
+setInterval(checkUiVersion, 300000);
 function node(tag, text, cls) {
   const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; return el;
 }
@@ -591,6 +606,7 @@ $("comment-form").addEventListener("submit", async ev => {
 });
 setInterval(loadKanban,10000);
 start();
+checkUiVersion();
 
 // Application installable (Android) : le service worker n'existe qu'en contexte sécurisé (HTTPS ou origine autorisée).
 if ("serviceWorker" in navigator && window.isSecureContext) {
