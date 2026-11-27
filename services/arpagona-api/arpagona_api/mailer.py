@@ -34,10 +34,11 @@ def mailbox(value: str) -> str:
 
 class Mailer:
     def __init__(self, host: str, port: int = 587, user: str = '', password: str = '',
-                 sender: str = '', starttls: bool = True, timeout_s: float = 15.0):
+                 sender: str = '', starttls: bool = True, timeout_s: float = 15.0, allowed_to: tuple[str, ...] = ()):
         self.host, self.port, self.user = host, int(port), user
         self._password, self.sender = password, sender or user
         self.starttls, self.timeout = starttls, timeout_s
+        self.allowed_to = allowed_to
         try:
             local = ipaddress.ip_address(host).is_loopback
         except ValueError:
@@ -58,7 +59,8 @@ class Mailer:
         return cls(host, int(env.get('ARPAGONA_SMTP_PORT', '587')),
                    env.get('ARPAGONA_SMTP_USER', ''), password,
                    env.get('ARPAGONA_SMTP_FROM', '') or env.get('ARPAGONA_SMTP_USER', ''),
-                   env.get('ARPAGONA_SMTP_STARTTLS', '1') != '0')
+                   env.get('ARPAGONA_SMTP_STARTTLS', '1') != '0',
+                   allowed_to=tuple(x.strip() for x in env.get('ARPAGONA_SMTP_ALLOWED_TO', '').split(',') if x.strip()))
 
     def __repr__(self):
         return f'Mailer(host={self.host!r}, port={self.port}, sender={self.sender!r})'
@@ -66,6 +68,8 @@ class Mailer:
     def send(self, to: str, subject: str, body: str, message_id: str | None = None) -> str:
         mailbox(to)
         mailbox(self.sender)
+        if self.allowed_to and to not in self.allowed_to:
+            raise MailError('destinataire hors liste de recette autorisée')
         if not isinstance(subject, str) or not subject or any(c in subject for c in '\r\n'):
             raise MailError('objet invalide')
         if not isinstance(body, str):

@@ -122,6 +122,13 @@ class SMTPWireTest(unittest.TestCase):
         for addr in ['a@example.invalid,b@example.invalid', 'A <a@example.invalid>', 'a@example.invalid\r\nBcc:x@y', 'x']:
             with self.assertRaises(MailError): mailbox(addr)
 
+    def test_recette_allowlist_before_network(self):
+        m = Mailer('smtp.example.invalid', sender='from@example.invalid', allowed_to=('self@example.invalid',))
+        with patch('arpagona_api.mailer.smtplib.SMTP') as smtp:
+            with self.assertRaises(MailError):
+                m.send('client@example.invalid', 'Objet', 'Corps')
+            smtp.assert_not_called()
+
     def test_disconnect_during_submission_is_uncertain(self):
         with patch('arpagona_api.mailer.smtplib.SMTP') as factory:
             factory.return_value.send_message.side_effect = OSError('dropped')
