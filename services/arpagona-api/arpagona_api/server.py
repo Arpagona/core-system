@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 import threading
 import hmac
 import time
@@ -16,6 +17,7 @@ from zoneinfo import ZoneInfo
 from .engagements import InvalidEngagement, fingerprint, mail_fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
 from .mailer import MailError, Mailer
+from .budget import measured_cost, micros
 from .store import SESSION_TTL_S, Store
 from .kanban import KanbanClient
 from .agents import AgentRegistry
@@ -50,8 +52,8 @@ class App:
         self.session_idle_minutes = session_idle_minutes
         self.session_daily_hour = session_daily_hour
         self.now = now
-        self.max_mission_usd = max(0.0, float(max_mission_usd))
-        self.max_day_usd = max(0.0, float(max_day_usd))
+        self.max_mission_usd = micros(max_mission_usd, True)/1_000_000
+        self.max_day_usd = micros(max_day_usd, True, ceiling=False)/1_000_000
         self.mailer = mailer
         # Pont vers un second Mission Control (GONA) : clé + comptes autorisés. Vide = pont désactivé.
         self.bridge_key: bytes = b""
@@ -146,7 +148,7 @@ class App:
         un seul point de vérité, jamais le flux relayé.
         """
         if not run_id:
-            self.store.settle_message(message_id, "La demande n'a pas pu être transmise.", "failed")
+            self.store.settle_message(message_id, "Transmission non confirmée : vérification nécessaire avant toute reprise.", "failed")
             return {"status": "failed", "output": "", "cost": None}
         try:
             status = (hermes or self.hermes).run_status(run_id)
@@ -157,12 +159,7 @@ class App:
         if not isinstance(usage, dict):
             usage = {}
         raw_cost = usage.get("cost_usd")
-        cost = None
-        if raw_cost is not None:
-            try:
-                cost = float(raw_cost)
-            except (TypeError, ValueError):
-                cost = None
+        cost = measured_cost(raw_cost)
         output = str(status.get("output") or "")
         if state == "completed":
             self.store.settle_message(message_id, output, "done")
@@ -170,6 +167,7 @@ class App:
             self.store.settle_message(message_id, "La réponse n'a pas abouti.", "failed")
         else:
             return {"status": state, "output": "", "cost": cost}
+        self.store.budget.settle_run(run_id, cost, self.now())
         mission = self.store.mission_for_run(run_id)
         if mission is not None and mission["status"] == "en_cours":
             final = "terminee" if state == "completed" else ("arretee" if state == "cancelled" else "echouee")
@@ -463,17 +461,17 @@ def make_handler(app: App):
             if hermes is None:
                 app.store.audit(user["id"], "chat_refusé_sans_agent", user["login"])
                 return self._json(503, {"error": "aucun agent personnel n'est configuré pour ce compte"})
-            # Plafond journalier (24 h glissantes) : refus avant tout appel facturé.
-            if app.max_day_usd:
-                spent = app.store.cost_since(app.now() - 86400)
-                if spent >= app.max_day_usd:
-                    app.store.audit(user["id"], "chat_refusé_plafond", f"{spent:.4f} USD")
-                    return self._json(429, {"error": "plafond de dépense journalier atteint : "
-                                                     "aucune nouvelle mission n'est lancée"})
             with app.chat_lock:
                 conv = app.store.conversation_for(user["id"])
                 if app.store.has_pending(conv["id"]):
                     return self._json(409, {"error": "une réponse est déjà en cours"})
+                admission_key = 'arpagona-chat-' + secrets.token_hex(16)
+                admitted = app.store.budget.reserve(admission_key, user['id'],
+                    app.max_mission_usd, app.max_day_usd, app.now())
+                if admitted != 'ok':
+                    app.store.audit(user['id'], 'chat_refusé_budget', admitted)
+                    return self._json(429, {'error': 'démarrage refusé : plafond d’admission atteint, budget réservé ou coût inconnu',
+                                            'motif': admitted})
                 reason = app.rotation_reason(conv)
                 if reason:
                     old_id = conv["id"]
@@ -484,12 +482,14 @@ def make_handler(app: App):
                 answer_id = app.store.add_message(conv["id"], "assistant", "", status="pending", created_at=app.now())
                 try:
                     run_id = hermes.start_run(text, conv["hermes_session_id"],
-                                              f"arpagona-{conv['hermes_session_id']}-msg-{answer_id}",
+                                              admission_key,
                                               instructions=instructions)
                 except HermesError as exc:
-                    app.store.settle_message(answer_id, "Le moteur est indisponible.", "failed")
+                    app.store.budget.settle(admission_key, None, app.now())
+                    app.store.settle_message(answer_id, "Démarrage non confirmé : vérification nécessaire.", "failed")
                     app.store.audit(user["id"], "chat_échec", str(exc))
                     return self._json(502, {"error": "moteur indisponible"})
+                app.store.budget.bind(admission_key, run_id)
                 app.store.set_run_id(answer_id, run_id)
                 mission_id = app.store.start_mission(user["id"], conv["id"], run_id, text)
             app.store.audit(user["id"], "chat", f"message {answer_id} mission {mission_id}")
@@ -642,13 +642,15 @@ def make_handler(app: App):
             if not user:
                 return self._json(401, {"error": "non connecté"})
             rows = app.store.missions(user["id"], limit=50)
+            budget = app.store.budget.snapshot(app.now())
             self._json(200, {"missions": [
                 {"id": r["id"], "titre": r["title"], "statut": r["status"],
-                 "debut": r["created_at"], "fin": r["ended_at"], "cout": r["cost_usd"],
+                 "debut": r["created_at"], "fin": r["ended_at"], "cout": measured_cost(r["cost_usd"]),
                  "resultat": r["result"], "arret": r["stop_reason"]} for r in rows],
                 "actives": sum(1 for r in rows if r["status"] == "en_cours"),
                 "plafond_mission": app.max_mission_usd, "plafond_jour": app.max_day_usd,
-                "depense_24h": round(app.store.cost_since(app.now() - 86400), 4)})
+                "depense_24h": budget['mesure_usd'],
+                "budget": budget})
 
         def _mission_stop(self) -> None:
             user = self._user()
@@ -857,30 +859,42 @@ def run_due_engagement(app: App, engagement: dict) -> None:
         "Prépare un brouillon de relance avec l'outil arpagona_draft_create. "
         "Rappelle le motif et la décision dans le corps. N'envoie rien."
     )
-    try:
-        # La clé porte la session (aléatoire, propre au compte) et le numéro de tentative : un numéro de
-        # ligne seul peut être réattribué par SQLite, et une nouvelle tentative doit relancer une exécution.
-        run_id = hermes.start_run(
-            prompt, conv["hermes_session_id"],
-            f"arpagona-{conv['hermes_session_id']}-echeance-{engagement['id']}-{engagement['attempts']}")
-    except HermesError:
-        app.store.release_engagement(engagement["id"], "planifie")
-        return
-    deadline = time.time() + 240
-    while time.time() < deadline:
+    key = f"arpagona-{conv['hermes_session_id']}-echeance-{engagement['id']}-{engagement['attempts']}"
+    with app.chat_lock:
+        if app.store.has_pending(conv['id']):
+            app.store.release_engagement(engagement['id'], 'planifie')
+            return
+        admitted = app.store.budget.reserve(key, engagement['user_id'],
+            app.max_mission_usd, app.max_day_usd, app.now())
+        if admitted != 'ok':
+            app.store.audit(engagement['user_id'], 'échéance_refusée_budget', admitted)
+            app.store.release_engagement(engagement['id'], 'planifie')
+            return
+        answer_id = app.store.add_message(conv['id'], 'assistant', '', status='pending', created_at=app.now())
         try:
-            status = hermes.run_status(run_id)
+            run_id = hermes.start_run(prompt, conv['hermes_session_id'], key)
         except HermesError:
-            time.sleep(5)
-            continue
-        if status.get("status") in TERMINAL:
-            app.store.audit(engagement["user_id"], "échéance_traitée",
-                            f"{engagement['id']} {status.get('status')}")
-            fresh = app.store.engagement(engagement["id"])
-            if fresh and fresh["status"] == "en_preparation":
-                app.store.release_engagement(engagement["id"], "planifie")
+            app.store.budget.settle(key, None, app.now())
+            app.store.settle_message(answer_id, 'Démarrage non confirmé : vérification nécessaire.', 'failed')
+            app.store.audit(engagement['user_id'], 'échéance_soumission_inconnue', str(engagement['id']))
+            return
+        app.store.budget.bind(key, run_id)
+        app.store.set_run_id(answer_id, run_id)
+        app.store.start_mission(engagement['user_id'], conv['id'], run_id,
+                               'Échéance : ' + engagement['subject'])
+    deadline = time.monotonic() + 240
+    while time.monotonic() < deadline:
+        status = app.settle_from_engine(answer_id, run_id, hermes)
+        if status and status['status'] in TERMINAL:
+            app.store.audit(engagement['user_id'], 'échéance_traitée',
+                            f"{engagement['id']} {status['status']}")
+            fresh = app.store.engagement(engagement['id'])
+            if fresh and fresh['status'] == 'en_preparation':
+                app.store.release_engagement(engagement['id'], 'planifie')
             return
         time.sleep(3)
+    # Délai client écoulé ≠ moteur annulé : message/mission/réserve restent en attente.
+    app.store.audit(engagement['user_id'], 'échéance_attente_moteur', str(engagement['id']))
 
 
 def main() -> None:

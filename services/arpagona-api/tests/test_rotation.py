@@ -9,6 +9,10 @@ import test_api as helpers
 
 
 class RotationTest(unittest.TestCase):
+    store: helpers.Store
+    engine: helpers.FakeEngine
+    app: helpers.App
+    port: int
     setUp = helpers.ApiTest.setUp
     tearDown = helpers.ApiTest.tearDown
 
@@ -110,7 +114,14 @@ class RotationTest(unittest.TestCase):
         self.clock[0] += 241 * 60
         self.engine.fail_next = True
         self.assertEqual(self.send(c, 'échec')[0], 502)
-        self.send(c, 'réessai')
+        # Nouveau contrat : 503 ne prouve pas une absence d'effet à travers un proxy.
+        self.assertEqual(self.send(c, 'réessai sans preuve')[0], 429)
+        key = self.store._one("SELECT key FROM budget_entries WHERE state='unknown'")['key']
+        # Dans CE faux moteur, fail_next refuse avant de créer un run : preuve locale.
+        self.assertEqual(len(self.engine.runs), 1)
+        self.store.budget.reconcile_unknown(key, 0, 'Fixture FakeEngine : rejet avant création du run',
+                                            self.user_id(), self.clock[0])
+        self.assertEqual(self.send(c, 'réessai')[0], 200)
         self.assertIn('Utilisateur : avant', self.engine.instructions[-1])
 
     def test_passation_limitee(self):

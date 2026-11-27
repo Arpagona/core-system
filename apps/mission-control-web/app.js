@@ -279,8 +279,13 @@ async function loadMissions() {
   const res = await fetch("/api/missions");
   if (res.status !== 200) return;
   const data = await res.json();
-  $("budget").textContent = "Dépensé sur 24 h : " + Number(data.depense_24h || 0).toFixed(3) +
-    " $ · plafond jour " + data.plafond_jour + " $ · plafond mission " + data.plafond_mission + " $.";
+  const budget = data.budget;
+  $("budget").textContent = budget
+    ? "Coût mesuré (24 h) : " + Number(budget.mesure_usd).toFixed(3) +
+      " $ · réservé : " + Number(budget.reserve_usd).toFixed(3) + " $ · coûts inconnus : " +
+      budget.couts_inconnus + ". Limite d’admission : " + data.plafond_jour +
+      " $ / 24 h. Ce n’est pas un plafond garanti par le fournisseur."
+    : "Suivi budgétaire incomplet : aucune garantie de plafond fournisseur.";
   const box = $("missions-list");
   box.replaceChildren();
   if (!data.missions.length) {
