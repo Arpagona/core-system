@@ -572,3 +572,48 @@ dialog::backdrop {
 .filters{display:flex;gap:.5rem;margin:.5rem 0}.filters .btn.on{background:var(--accent,#2a5bd7);color:#fff}
 
 .session-break { color: #888; font-size: .75rem; text-align: center; margin: .75rem 0; }
+
+/* Kanban quotidien : vue dédiée et lecture mobile, sans glisser-déposer imposé. */
+.layout[data-view]:not([data-view="chat"]) .workspace {grid-template-columns:minmax(0,1fr)}
+.layout[data-view="kanban"] .kanban {height:calc(100dvh - 210px);min-height:500px}
+.kanban-tools {display:grid;gap:8px;margin:12px 0 2px;flex-shrink:0}
+#kanban-search {margin:0;width:100%;min-width:0}
+.kanban-options {display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.kanban-options label {margin:0;font-size:12px}
+#kanban-mode {width:auto;min-width:95px;margin:0;padding:8px}
+.inline-check {display:flex;gap:7px;align-items:center;cursor:pointer}
+.inline-check input {width:18px;height:18px;margin:0}
+.filters {flex-wrap:wrap;margin:0}
+.kanban .btn,#card-dialog .btn {min-height:44px}
+#card-dialog .close {min-width:44px}
+#kanban-mode {min-height:44px}
+.filters .btn.on {color:#081421;background:var(--accent)}
+#kanban-summary {margin:8px 0 0;font-size:12px}
+#kanban-status {font-size:11px;flex-shrink:0}
+.board {grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(205px,1fr);align-items:start;padding-bottom:8px}
+.column h3 {font-size:11px;line-height:1.5;letter-spacing:.03em}
+.column-empty {font-size:12px;color:var(--dim);padding:8px 2px}
+.task {font-size:13px;line-height:1.45;min-height:90px}
+.task:focus-visible {outline:2px solid var(--accent);outline-offset:2px}
+.task-title {font-weight:600;display:block}
+.task-meta {display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:11px}
+.task-state,.task-owner {display:inline-block;padding:3px 7px;border-radius:6px;background:#ffffff0c;color:#dbe5f7}
+.task-state[data-state="blocked"],.task-owner.unassigned {background:#f9ba4720;color:#ffd891}
+.task-state[data-state="running"] {background:#3dd9ca20;color:#84eade}
+.task-state[data-state="review"] {background:#b28cff22;color:#d2b9ff}
+.task .task-id {font-size:10px;margin-top:7px;opacity:.75}
+.board.is-list {display:flex;flex-direction:column;gap:8px;align-items:stretch}
+.is-list .task {margin:0;min-height:84px;flex-shrink:0}
+.kanban-empty {padding:22px;border:1px dashed var(--line);border-radius:12px;font-size:14px;line-height:1.6}
+#block-form {margin-top:16px;padding:14px;border:1px solid #f9ba4744;border-radius:12px}
+.block-context {border-left:3px solid #ffd891;padding:10px 14px;background:#f9ba4710;white-space:pre-wrap;font-size:13px}
+@media(max-width:720px) {
+ .layout[data-view="kanban"] .kanban {height:calc(100dvh - 180px);min-height:460px}
+ .board {flex:1;min-height:120px;overflow:auto;grid-auto-flow:row;grid-template-columns:minmax(0,1fr);grid-auto-columns:auto}
+ .board.is-list {overflow:auto}
+ .filters .btn {font-size:11px;padding:8px 10px}
+ .kanban-intro {display:none}
+ .kanban-options {gap:8px;font-size:11px}
+ .inline-check {font-size:11px!important}
+ dialog {padding:20px}
+}

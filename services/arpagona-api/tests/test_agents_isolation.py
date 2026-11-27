@@ -119,6 +119,18 @@ class IsolationTest(unittest.TestCase):
         self.assertEqual(client.login(login, PW[login]), 200)
         return client
 
+    def test_equipe_accessible_sans_inferer_les_responsables_des_cartes(self):
+        self.bridge.cards.clear()  # un membre sans carte reste disponible dans le sélecteur
+        for login in ("mael", "thibaud"):
+            status, raw, _ = self.client(login).call("GET", "/api/me")
+            self.assertEqual(status, 200)
+            self.assertCountEqual(json.loads(raw)["team"], ["mael", "thibaud"])
+        status, raw, _ = self.client("orphelin").call("GET", "/api/me")
+        self.assertEqual(json.loads(raw)["team"], [])
+        status, raw, _ = Client(self.port).call("GET", "/api/me")
+        self.assertEqual(status, 401)
+        self.assertNotIn("team", json.loads(raw))
+
     def test_chaque_compte_atteint_son_moteur(self):
         mael, thibaud = self.client("mael"), self.client("thibaud")
         self.assertEqual(mael.call("POST", "/api/chat", {"text": "bonjour de Maël"})[0], 200)

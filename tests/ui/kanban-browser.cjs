@@ -1,0 +1,61 @@
+// Test réel navigateur + API locale + bridge, CLI/moteur de développement simulés.
+// Ne cible jamais Atlas ni un compte réel. Chrome CDP local requis, Node >=22.
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const BASE='http://127.0.0.1:18800',PAGE='http://kanban-test.localhost:18800';
+const out=path.resolve(process.argv[2]||'.local/kanban-browser-proof');fs.mkdirSync(out,{recursive:true});
+let ws,session,context;const checks=[],pending=new Map();let serial=0;
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function rpc(method,params={},sid=session){return new Promise((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout '+method));},20000);pending.set(id,{resolve,reject,timer});ws.send(JSON.stringify({id,method,params,...(sid?{sessionId:sid}:{})}));});}
+async function js(expression){const r=await rpc('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});if(r.exceptionDetails)throw Error(r.result?.description||r.exceptionDetails.text);return r.result?.value;}
+async function wait(expression){for(let n=0;n<100;n++){if(await js(expression))return;await sleep(100);}throw Error('UI timeout: '+expression);}
+async function click(id){await js(`document.getElementById(${JSON.stringify(id)}).click()`);}
+async function submit(id){await js(`(()=>{const f=document.getElementById(${JSON.stringify(id)});f.querySelector('button[type="submit"],button:not([type])').click();})()`);}
+async function value(id,v,type='input'){await js(`(()=>{const e=document.getElementById(${JSON.stringify(id)});e.value=${JSON.stringify(v)};e.dispatchEvent(new Event(${JSON.stringify(type)},{bubbles:true}));})()`);}
+async function check(name,fn){await fn();checks.push({name,passed:true});console.log('PASS '+name);}
+async function screenshot(name){const r=await rpc('Page.captureScreenshot',{format:'png',captureBeyondViewport:false});fs.writeFileSync(path.join(out,name),Buffer.from(r.data,'base64'));}
+async function api(url,body){const r=await fetch(BASE+url,{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Arpagona':'1',Cookie:global.fixtureCookie},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};}
+(async()=>{
+ const login=await fetch(BASE+'/api/login',{method:'POST',headers:{'Content-Type':'application/json','X-Arpagona':'1'},body:JSON.stringify({login:'demo',password:'demo-arpagona-2026'})});
+ assert.equal(login.status,200);global.fixtureCookie=login.headers.getSetCookie()[0].split(';')[0];
+ const ver=await fetch('http://127.0.0.1:9223/json/version').then(r=>r.json());
+ ws=new WebSocket(ver.webSocketDebuggerUrl);
+ await new Promise((resolve,reject)=>{ws.onopen=resolve;ws.onerror=reject;});
+ ws.onmessage=e=>{const m=JSON.parse(e.data);if(!m.id)return;const p=pending.get(m.id);if(!p)return;pending.delete(m.id);clearTimeout(p.timer);m.error?p.reject(Error(m.error.message)):p.resolve(m.result);};
+ context=(await rpc('Target.createBrowserContext',{},null)).browserContextId;
+ const target=(await rpc('Target.createTarget',{url:'about:blank',browserContextId:context},null)).targetId;
+ session=(await rpc('Target.attachToTarget',{targetId:target,flatten:true},null)).sessionId;
+ await rpc('Page.enable');await rpc('Network.enable');
+ const sep=global.fixtureCookie.indexOf('=');
+ await rpc('Network.setCookie',{name:global.fixtureCookie.slice(0,sep),value:global.fixtureCookie.slice(sep+1),url:PAGE,httpOnly:true,sameSite:'Strict'});
+ await rpc('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+ await rpc('Page.navigate',{url:PAGE});
+ await wait(`!document.getElementById('app-view').hidden`);await click('scope-all');
+ await js(`document.querySelector('.tab[data-view="kanban"]').click()`);await wait(`document.querySelectorAll('.task').length===6`);
+ await check('vue dédiée desktop, six cartes actives',async()=>{assert.equal(await js(`document.getElementById('view-chat').hidden`),true);assert.ok(await js(`document.getElementById('view-kanban').getBoundingClientRect().width>1100`));});
+ await check('mes cartes',async()=>{await click('scope-mine');assert.equal(await js(`document.querySelectorAll('.task').length`),3);});
+ await check('sans responsable',async()=>{await click('scope-unassigned');assert.equal(await js(`document.querySelectorAll('.task').length`),1);});
+ await click('scope-all');
+ await check('recherche sans accents',async()=>{await value('kanban-search','demonstration');assert.equal(await js(`document.querySelectorAll('.task').length`),1);});
+ await check('état vide et effacement',async()=>{await value('kanban-search','inexistantxyz');assert.ok(await js(`document.querySelector('.kanban-empty').textContent.includes('sélection')`));await click('kanban-reset');assert.equal(await js(`document.querySelectorAll('.task').length`),6);});
+ await check('terminées sur demande',async()=>{await click('kanban-done');assert.equal(await js(`document.querySelectorAll('.task').length`),7);await click('kanban-done');});
+ await check('mode liste',async()=>{await value('kanban-mode','list','change');assert.equal(await js(`document.querySelectorAll('#board > .task').length`),6);});
+ await check('carte d’un collègue en lecture seule, API protectrice',async()=>{await js(`openCard('t_10000004')`);await wait(`document.getElementById('card-dialog').open`);assert.equal(await js(`document.querySelectorAll('#card-actions button').length`),0);const r=await api('/api/kanban/block',{id:'t_10000004',text:'Tentative synthétique refusée'});assert.equal(r.status,403);await click('close-card');});
+ await check('prise en charge explicite d’une carte non affectée',async()=>{await js(`openCard('t_10000005')`);await wait(`document.getElementById('card-dialog').open`);await js(`document.querySelector('#card-actions button').click()`);await wait(`document.getElementById('detail-meta').textContent.includes('demo')`);assert.equal((await api('/api/kanban/show?id=t_10000005')).data.task.assignee,'demo');await click('close-card');});
+ await check('responsables issus de l’équipe configurée',async()=>{const me=await api('/api/me');assert.deepEqual(me.data.team.sort(),['demo','lea']);assert.deepEqual(await js(`Array.from(document.getElementById('card-assignee').options).map(o=>o.value).sort()`),me.data.team);});
+ let created;
+ await check('création et responsable relus via API',async()=>{await click('new-card');await value('card-name','Préparer les éléments de validation');await value('card-body','Livrer une synthèse vérifiable. Prochaine action : contrôler les hypothèses.');await submit('create-card');await wait(`!document.getElementById('card-dialog').open`);const r=await api('/api/kanban/list');created=r.data.find(t=>t.title==='Préparer les éléments de validation');assert.equal(created.assignee,'demo');});
+ await check('commentaire rendu comme texte, sans injection HTML',async()=>{await js(`openCard(${JSON.stringify(created.id)})`);await wait(`document.getElementById('card-dialog').open`);await value('comment-text','À vérifier : <img src=x onerror="window.__unsafe=true">');await submit('comment-form');await wait(`document.getElementById('comments').textContent.includes('<img')`);assert.equal(await js(`document.querySelectorAll('#comments img').length`),0);assert.notEqual(await js('window.__unsafe'),true);});
+ await check('motif de blocage requis, aucun blocage vide',async()=>{await js(`Array.from(document.querySelectorAll('#card-actions button')).find(b=>b.textContent==='Bloquer').click()`);await submit('block-form');assert.equal((await api('/api/kanban/show?id='+created.id)).data.task.status,'ready');});
+ await check('blocage avec cause persistée et affichée',async()=>{await value('block-reason','Attendre la validation des hypothèses pour reprendre.');await submit('block-form');await wait(`document.getElementById('detail-meta').textContent.includes('Bloqué')`);const r=await api('/api/kanban/show?id='+created.id);assert.equal(r.data.task.status,'blocked');assert.equal(r.data.events.at(-1).payload.reason,'Attendre la validation des hypothèses pour reprendre.');assert.ok(await js(`document.getElementById('block-context').textContent.includes('hypothèses')`));});
+ await check('déblocage',async()=>{await js(`Array.from(document.querySelectorAll('#card-actions button')).find(b=>b.textContent==='Débloquer').click()`);await wait(`document.getElementById('detail-meta').textContent.includes('Prêt')`);assert.equal((await api('/api/kanban/show?id='+created.id)).data.task.status,'ready');});
+ await check('terminer puis disparition de la vue active',async()=>{await js(`Array.from(document.querySelectorAll('#card-actions button')).find(b=>b.textContent==='Terminer').click()`);await wait(`document.getElementById('detail-meta').textContent.includes('Terminé')`);await click('close-card');await js('loadKanban()');assert.equal((await api('/api/kanban/show?id='+created.id)).data.task.status,'done');assert.equal(await js(`!!document.querySelector('[data-card-id="${created.id}"]')`),false);});
+ await check('focus et filtres préservés à l’actualisation',async()=>{await click('scope-mine');await value('kanban-search','devis');await js(`window.__focusedCard=document.querySelector('.task');window.__focusedCard.focus();loadKanban()`);assert.ok(await js('document.activeElement===window.__focusedCard'));assert.equal(await js(`document.getElementById('kanban-search').value`),'devis');});
+ await check('erreur réseau visible, dernières cartes conservées',async()=>{await rpc('Network.setBlockedURLs',{urls:['*api/kanban/list*']});await js('loadKanban()');assert.ok(await js(`document.getElementById('kanban-status').textContent.includes('anciennes')`));assert.equal(await js(`document.querySelectorAll('.task').length`),1);await rpc('Network.setBlockedURLs',{urls:[]});await js('loadKanban()');});
+ await click('kanban-reset');await value('kanban-mode','board','change');await screenshot('kanban-desktop.png');
+ await check('mobile : liste par défaut et aucun débordement horizontal',async()=>{await rpc('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await js('window.__beforeReload=true');await rpc('Page.reload');await wait(`!window.__beforeReload && document.readyState==='complete' && document.getElementById('app-view') && !document.getElementById('app-view').hidden`);await js(`document.querySelector('.tab[data-view="kanban"]').click()`);await wait(`document.querySelectorAll('.task').length>0`);assert.equal(await js(`document.getElementById('kanban-mode').value`),'list');assert.ok(await js('document.documentElement.scrollWidth<=window.innerWidth'));});
+ await check('mobile : carte accessible au toucher et détail lisible',async()=>{assert.ok(await js(`document.querySelector('.task').getBoundingClientRect().height>=44`));await js(`document.querySelector('.task').click()`);await wait(`document.getElementById('card-dialog').open`);assert.ok(await js(`document.getElementById('card-dialog').getBoundingClientRect().width<=390`));await click('close-card');});
+ await screenshot('kanban-mobile.png');
+ await check('déconnexion : filtres et brouillons effacés',async()=>{await value('kanban-search','devis');await value('comment-text','Brouillon synthétique privé');await click('logout');await wait(`!document.getElementById('login-view').hidden`);assert.equal(await js(`document.getElementById('kanban-search').value`),'');assert.equal(await js(`document.getElementById('comment-text').value`),'');assert.equal(await js(`document.querySelectorAll('.task').length`),0);});
+ fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify({passed:true,checks,backend:'API et bridge réels, CLI/moteur simulés, données synthétiques',screenshots:['kanban-desktop.png','kanban-mobile.png']},null,2));
+ console.log(JSON.stringify({passed:true,checks:checks.length,output:out}));
+})().catch(e=>{fs.writeFileSync(path.join(out,'browser-results.json'),JSON.stringify({passed:false,checks,error:e.message},null,2));console.error(e.stack);process.exitCode=1;}).finally(async()=>{if(context&&ws?.readyState===1){try{await rpc('Target.disposeBrowserContext',{browserContextId:context},null);}catch{}}ws?.close();});

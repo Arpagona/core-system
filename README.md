@@ -43,7 +43,7 @@ python3 -m unittest discover -s tests/dev -v
 - **Journal** : les 200 derniers événements (connexion, décision, envoi, refus), sans secret. Visible en entier par l'admin, limité à ses propres événements pour un membre.
 - **Rôles** : `admin` (comptes, export, journal complet) et `membre`. Le premier compte d'une instance est toujours admin.
 - **Export** : JSON complet des données métier, réservé à l'admin.
-- Kanban : celui de l'instance Hermès du client, lu et modifié via `services/kanban-bridge/` (service local 127.0.0.1:8701, jeton dédié, liste blanche d'opérations sur la CLI officielle `hermes kanban`). Les cartes créées depuis l'interface n'ont pas d'affectation : aucun agent n'est déclenché.
+- Kanban : celui de l'instance Hermès du client, lu et modifié via `services/kanban-bridge/` (service local 127.0.0.1:8701, jeton dédié, liste blanche d'opérations sur la CLI officielle `hermes kanban`). En mode équipe, les cartes créées portent un responsable (par défaut le compte courant). Leur création ne constitue pas un lancement de mission. Proposition ergonomique et mode d’emploi : [docs/KANBAN-USAGE.md](docs/KANBAN-USAGE.md), non encore intégrés au banc.
 - Engagements en onglet ; mobile : chat d'abord. Dictée et lecture via le navigateur (aucun audio conservé).
 
 Configuration de l'envoi : `deploy/atlas/mail.env.example`. Sans SMTP configuré, l'API démarre et l'interface indique que l'envoi est indisponible.

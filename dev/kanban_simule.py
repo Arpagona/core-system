@@ -62,6 +62,9 @@ def main(argv: list[str]) -> int:
         elif op == "create":
             corps = next((o.split("=", 1)[1] for o in options if o.startswith("--body=")), "")
             nouvelle = tache(positionnels[0], corps, "ready")
+            for field,flag in (("assignee","--assignee="),("created_by","--created-by=")):
+                value=next((o.split("=",1)[1] for o in options if o.startswith(flag)),None)
+                if value is not None:nouvelle[field]=value
             taches.append(nouvelle)
             sortie = {k: v for k, v in nouvelle.items() if k != "comments"}
         else:
@@ -72,11 +75,15 @@ def main(argv: list[str]) -> int:
                 return 1
             if op == "show":
                 sortie = {"task": {k: v for k, v in t.items() if k != "comments"},
-                          "comments": t["comments"], "events": [], "parents": [], "children": [], "runs": []}
+                          "comments": t["comments"], "events": t.get("events", []), "parents": [], "children": [], "runs": []}
+            elif op == "assign":
+                t["assignee"] = positionnels[1]
             elif op == "comment":
                 auteur = next((o.split("=", 1)[1] for o in options if o.startswith("--author=")), "utilisateur")
                 t["comments"].append({"author": auteur, "body": positionnels[1], "created_at": int(time.time())})
             elif op in {"complete", "block", "unblock", "archive"}:
+                if op == "block":
+                    t.setdefault("events",[]).append({"kind":"blocked","payload":{"reason":positionnels[1]},"created_at":int(time.time())})
                 t["status"] = {"complete": "done", "block": "blocked", "unblock": "ready", "archive": "archived"}[op]
             else:
                 print("opération non simulée", file=sys.stderr)

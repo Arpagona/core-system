@@ -1,0 +1,90 @@
+2026-11-27T14:56:58+01:00
+TAP version 13
+# Subtest: les cartes actives seulement par défaut
+ok 1 - les cartes actives seulement par défaut
+  ---
+  duration_ms: 1.2308
+  type: 'test'
+  ...
+# Subtest: terminées visibles sur demande, archives toujours exclues
+ok 2 - terminées visibles sur demande, archives toujours exclues
+  ---
+  duration_ms: 0.212573
+  type: 'test'
+  ...
+# Subtest: mes cartes selon le compte connecté
+ok 3 - mes cartes selon le compte connecté
+  ---
+  duration_ms: 0.13405
+  type: 'test'
+  ...
+# Subtest: les cartes des collègues ne sont pas à moi
+ok 4 - les cartes des collègues ne sont pas à moi
+  ---
+  duration_ms: 0.102429
+  type: 'test'
+  ...
+# Subtest: sans responsable
+ok 5 - sans responsable
+  ---
+  duration_ms: 0.124813
+  type: 'test'
+  ...
+# Subtest: accents, casse, espaces et recherche multitermes
+ok 6 - accents, casse, espaces et recherche multitermes
+  ---
+  duration_ms: 0.212794
+  type: 'test'
+  ...
+# Subtest: tous les termes sont requis
+ok 7 - tous les termes sont requis
+  ---
+  duration_ms: 0.111607
+  type: 'test'
+  ...
+# Subtest: responsable et identifiant recherchables
+ok 8 - responsable et identifiant recherchables
+  ---
+  duration_ms: 0.187153
+  type: 'test'
+  ...
+# Subtest: filtre et recherche se combinent
+ok 9 - filtre et recherche se combinent
+  ---
+  duration_ms: 0.279062
+  type: 'test'
+  ...
+# Subtest: ne modifie pas les cartes reçues
+ok 10 - ne modifie pas les cartes reçues
+  ---
+  duration_ms: 0.365801
+  type: 'test'
+  ...
+# Subtest: état inconnu conservé et étiqueté honnêtement
+ok 11 - état inconnu conservé et étiqueté honnêtement
+  ---
+  duration_ms: 0.166804
+  type: 'test'
+  ...
+# Subtest: liste ordonnée par priorité puis attention, tri stable
+ok 12 - liste ordonnée par priorité puis attention, tri stable
+  ---
+  duration_ms: 0.21635
+  type: 'test'
+  ...
+# Subtest: les planifiées ne sont pas étiquetées bloquées
+ok 13 - les planifiées ne sont pas étiquetées bloquées
+  ---
+  duration_ms: 0.081569
+  type: 'test'
+  ...
+1..13
+# tests 13
+# suites 0
+# pass 13
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49.036541
+Aucun des motifs sensibles ciblés détectés (couverture limitée ; pas un audit de sécurité).

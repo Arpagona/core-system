@@ -1,0 +1,10 @@
+......................................................................................../home/thibaud/projects/core-system-kanban/services/arpagona-api/arpagona_api/hermes.py:35: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x77d0c373b790>
+  raise HermesError(f"moteur : HTTP {exc.code}") from exc
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/thibaud/.hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/tempfile.py:538: ResourceWarning: Implicitly cleaning up <HTTPError 503: 'Service Unavailable'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+...........
+----------------------------------------------------------------------
+Ran 99 tests in 78.669s
+
+OK
