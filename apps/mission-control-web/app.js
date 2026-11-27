@@ -190,7 +190,10 @@ async function loadDrafts() {
     if (d.livraison) meta.append(" · " + d.livraison);
     const body = document.createElement("pre");
     body.textContent = d.corps;
-    card.append(h, meta, body);
+    const envelope = document.createElement('p');
+    envelope.className = 'meta';
+    envelope.textContent = 'De : ' + (d.expediteur || 'non validé') + ' · Objet : ' + (d.sujet || 'non validé');
+    card.append(h, envelope, meta, body);
     if (d.statut === "en_attente") {
       const actions = document.createElement("div");
       actions.className = "actions";
@@ -223,11 +226,12 @@ async function loadDrafts() {
           const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); copy.textContent = "Texte sélectionné : Ctrl+C"; }
       });
       actions.append(copy);
-      if (meUser && meUser.mail) {
+      if (meUser && meUser.mail && !d.message_id && d.sujet && d.expediteur) {
         const mail = document.createElement("button");
         mail.className = "btn"; mail.textContent = "Envoyer par courriel";
         mail.addEventListener("click", async () => {
-          if (!confirm("Envoyer ce texte exact à " + d.cible + " ?\n\nL'envoi est définitif.")) return;
+          if (!confirm('De : ' + d.expediteur + '\nÀ : ' + d.cible + '\nObjet : ' + d.sujet +
+            '\n\nEnvoyer le message affiché ? L’envoi est définitif.')) return;
           mail.disabled = true;
           const r = await fetch("/api/drafts/send", { method: "POST", headers: HEADERS,
             body: JSON.stringify({ id: d.id, empreinte: d.empreinte }) }).catch(() => null);
@@ -239,7 +243,9 @@ async function loadDrafts() {
         });
         actions.append(mail);
       } else {
-        actions.append(node("span", "Envoi non configuré sur cette instance.", "hint"));
+        actions.append(node('span', d.message_id ? 'Tentative enregistrée : vérifier la livraison, aucun nouvel envoi.' :
+          (!d.sujet || !d.expediteur ? 'Ancien brouillon : recréez-le pour valider objet et expéditeur.' :
+          'Envoi non configuré sur cette instance.'), 'hint'));
       }
       card.append(actions);
     }

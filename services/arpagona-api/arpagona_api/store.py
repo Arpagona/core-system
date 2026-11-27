@@ -8,7 +8,8 @@ import sqlite3
 import threading
 import time
 
-from .engagements import fingerprint
+from .engagements import fingerprint, mail_fingerprint
+from email.utils import make_msgid
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -139,15 +140,15 @@ class Store:
         for name, kind in (("closed_reason", "TEXT"), ("parent_id", "INTEGER REFERENCES conversations(id)")):
             if name not in cols:
                 self._db.execute(f"ALTER TABLE conversations ADD COLUMN {name} {kind}")
-        # Rôles : bases antérieures sans colonne. Le plus ancien compte devient admin
-        # pour qu'une instance existante ne se retrouve pas sans administrateur.
+        # Aucun privilège ajouté par migration/restart : l'opérateur nomme
+        # explicitement l'admin avec manage set-role (le plus ancien peut être une démo).
         user_cols = {r["name"] for r in self._db.execute("PRAGMA table_info(users)")}
         if "role" not in user_cols:
             self._db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'membre'")
-        if not self._db.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone():
-            oldest = self._db.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
-            if oldest:
-                self._db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (oldest["id"],))
+        draft_cols = {r['name'] for r in self._db.execute('PRAGMA table_info(drafts)')}
+        for name, kind in (("subject", "TEXT"), ("sender", "TEXT"), ("send_message_id", "TEXT")):
+            if name not in draft_cols:
+                self._db.execute(f'ALTER TABLE drafts ADD COLUMN {name} {kind}')
 
     def _migrate_legacy(self) -> None:
         self._db.execute("PRAGMA foreign_keys=OFF")
@@ -416,11 +417,12 @@ class Store:
     def release_engagement(self, engagement_id: int, status: str) -> None:
         self._run("UPDATE engagements SET status = ? WHERE id = ?", (status, engagement_id))
 
-    def add_draft(self, engagement_id: int, user_id: int, target: str, body: str, fingerprint: str) -> int:
+    def add_draft(self, engagement_id: int, user_id: int, target: str, body: str, fingerprint: str,
+                  subject: str | None = None, sender: str | None = None) -> int:
         cur = self._run(
-            "INSERT INTO drafts(engagement_id, user_id, target, body, fingerprint, status, created_at)"
-            " VALUES (?,?,?,?,?,'en_attente',?)",
-            (engagement_id, user_id, target, body, fingerprint, time.time()),
+            "INSERT INTO drafts(engagement_id, user_id, target, body, fingerprint, status, created_at, subject, sender)"
+            " VALUES (?,?,?,?,?,'en_attente',?,?,?)",
+            (engagement_id, user_id, target, body, fingerprint, time.time(), subject, sender),
         )
         return int(cur.lastrowid or 0)
 
@@ -433,23 +435,34 @@ class Store:
         return self._one("SELECT * FROM drafts WHERE id = ?", (draft_id,))
 
     def decide_draft(self, draft_id: int, approve: bool, user_id: int, expected_fingerprint: str) -> str:
-        """Décide d'un brouillon. Refuse si le contenu a changé depuis l'affichage."""
+        """Décision et engagement atomiques entre processus ; contenu exact revérifié."""
         with self._lock:
-            row = self._db.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
-            if not row:
-                return "inconnu"
-            if row["status"] != "en_attente":
-                return "deja_decide"
-            if not hmac.compare_digest(row["fingerprint"], expected_fingerprint):
-                return "contenu_modifie"
-            status = "approuve" if approve else "refuse"
-            self._db.execute("UPDATE drafts SET status = ?, decided_at = ?, decided_by = ? WHERE id = ?",
-                             (status, time.time(), user_id, draft_id))
-            self._db.execute("UPDATE engagements SET status = ? WHERE id = ?", (status, row["engagement_id"]))
-            return status
+            self._db.execute('BEGIN IMMEDIATE')
+            try:
+                row = self._db.execute('SELECT * FROM drafts WHERE id=?', (draft_id,)).fetchone()
+                if not row:
+                    return 'inconnu'
+                if row['user_id'] != user_id:
+                    return 'interdit'
+                if row['status'] != 'en_attente':
+                    return 'deja_decide'
+                current = (mail_fingerprint(row['target'], row['subject'], row['body'], row['sender'])
+                           if row['subject'] is not None and row['sender'] is not None else
+                           fingerprint(row['target'], row['body']))
+                if not hmac.compare_digest(row['fingerprint'], expected_fingerprint) or not hmac.compare_digest(current, row['fingerprint']):
+                    return 'contenu_modifie'
+                status = 'approuve' if approve else 'refuse'
+                self._db.execute('UPDATE drafts SET status=?, decided_at=?, decided_by=?, delivery=? WHERE id=?',
+                    (status, time.time(), user_id, 'approuvé : prêt à envoyer' if approve else 'refusé', draft_id))
+                self._db.execute('UPDATE engagements SET status=? WHERE id=?', (status, row['engagement_id']))
+                self._db.execute('COMMIT')
+                return status
+            finally:
+                if self._db.in_transaction:
+                    self._db.execute('ROLLBACK')
 
     def set_delivery_note(self, draft_id: int, note: str) -> None:
-        self._run("UPDATE drafts SET delivery = ? WHERE id = ?", (note, draft_id))
+        self._run("UPDATE drafts SET delivery = ? WHERE id = ? AND send_message_id IS NULL", (note, draft_id))
 
     def user_by_id(self, user_id: int) -> sqlite3.Row | None:
         return self._one("SELECT * FROM users WHERE id = ?", (user_id,))
@@ -483,14 +496,27 @@ class Store:
                 return "deja_en_cours", row
             if row["status"] != "approuve":
                 return "non_approuve", row
-            recomputed = fingerprint(row["target"], row["body"])
+            if row['subject'] is None or row['sender'] is None:
+                return 'ancien_brouillon', row
+            recomputed = mail_fingerprint(row['target'], row['subject'], row['body'], row['sender'])
             if not hmac.compare_digest(recomputed, row["fingerprint"]):
                 return "contenu_modifie", row
             if not hmac.compare_digest(row["fingerprint"], expected_fingerprint or ""):
                 return "contenu_modifie", row
-            self._db.execute("UPDATE drafts SET delivery = ? WHERE id = ?",
-                             ("envoi_en_cours", draft_id))
-            return "ok", row
+            # Compare-and-swap SQLite : un seul gagnant, même avec deux Store/processus.
+            message_id = make_msgid(domain='arpagona.com')
+            cur = self._db.execute(
+                "UPDATE drafts SET delivery='envoi_en_cours', send_message_id=?"
+                " WHERE id=? AND status='approuve' AND send_message_id IS NULL"
+                " AND fingerprint=? AND target=? AND body=? AND subject=? AND sender=?",
+                (message_id, draft_id, row['fingerprint'], row['target'], row['body'], row['subject'], row['sender']))
+            if cur.rowcount != 1:
+                return 'deja_en_cours', row
+            return "ok", self._db.execute('SELECT * FROM drafts WHERE id=?', (draft_id,)).fetchone()
+
+    def mark_send_uncertain(self, draft_id: int) -> None:
+        self._run("UPDATE drafts SET delivery='envoi_inconnu : vérifier manuellement, ne pas réessayer'"
+                  " WHERE id=?", (draft_id,))
 
     def mark_sent(self, draft_id: int, message_id: str) -> None:
         with self._lock:

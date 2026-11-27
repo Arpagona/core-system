@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from datetime import datetime
 
 CONFIDENCES = ("certain", "probable", "a_confirmer")
@@ -27,6 +28,13 @@ def parse_due(value: str) -> tuple[float, str, str]:
 
 def fingerprint(target: str, body: str) -> str:
     return hashlib.sha256((target.strip() + "\n" + body.strip()).encode("utf-8")).hexdigest()
+
+
+def mail_fingerprint(target: str, subject: str, body: str, sender: str) -> str:
+    """Version 2 : message exact, champs séparés sans ambiguïté, aucun strip implicite."""
+    payload = json.dumps(["arpagona-mail-v2", sender, target, subject, body],
+                         ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def validate_fields(client: str, subject: str, decision: str, confidence: str) -> tuple[str, str, str, str]:

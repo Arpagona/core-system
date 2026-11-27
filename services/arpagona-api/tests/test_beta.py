@@ -27,8 +27,9 @@ class FakeMailer:
     def __init__(self):
         self.sent = []
         self.fail = False
+        self.sender = 'contact@arpagona.com'
 
-    def send(self, to, subject, body):
+    def send(self, to, subject, body, message_id=None):
         if self.fail:
             from arpagona_api.mailer import MailError
             raise MailError("courriel non remis (SMTP)")
@@ -182,6 +183,21 @@ class BetaTest(unittest.TestCase):
     def test_envoi_sans_configuration(self):
         self.app.mailer = None
         self.assertEqual(self.alice.call("POST", "/api/drafts/send", {"id": 1, "empreinte": "x"})[0], 503)
+
+    def test_approbation_exige_boolean_strict(self):
+        draft = self.draft()
+        for value in ('false', 'true', 1, None):
+            status, _, _ = self.alice.call('POST', '/api/drafts/decide',
+                {'id': draft['id'], 'approve': value, 'empreinte': draft['empreinte']})
+            self.assertEqual(status, 400)
+
+    def test_approbation_du_brouillon_d_autrui_refusee(self):
+        draft = self.draft()
+        for approve in (True, False):
+            status, _, _ = self.bruno.call("POST", "/api/drafts/decide",
+                {"id": draft["id"], "approve": approve, "empreinte": draft["empreinte"]})
+            self.assertEqual(status, 403)
+            self.assertEqual(self.store.draft(draft["id"])["status"], "en_attente")
 
     def test_envoi_du_brouillon_d_autrui_refuse(self):
         draft = self.draft()
