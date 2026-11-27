@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fields
+from .engagements import InvalidEngagement, fingerprint, mail_fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
 from .mailer import MailError, Mailer
 from .store import SESSION_TTL_S, Store
@@ -605,7 +605,8 @@ def make_handler(app: App):
             rows = app.store.drafts(user["id"])
             self._json(200, {"drafts": [
                 {"id": r["id"], "engagement_id": r["engagement_id"], "cible": r["target"], "corps": r["body"],
-                 "empreinte": r["fingerprint"], "statut": r["status"], "livraison": r["delivery"],
+                 "empreinte": r["fingerprint"], "sujet": r['subject'], "expediteur": r['sender'],
+                 "message_id": r['send_message_id'], "statut": r["status"], "livraison": r["delivery"],
                  "cree": r["created_at"]} for r in rows]})
 
         def _decide(self) -> None:
@@ -619,16 +620,18 @@ def make_handler(app: App):
                 draft_id = int(data.get("id", 0))
             except (TypeError, ValueError):
                 return self._json(400, {"error": "identifiant invalide"})
-            outcome = app.store.decide_draft(draft_id, bool(data.get("approve")), user["id"],
+            if type(data.get('approve')) is not bool:
+                return self._json(400, {'error': 'approve doit être un booléen'})
+            outcome = app.store.decide_draft(draft_id, data['approve'], user["id"],
                                              str(data.get("empreinte", "")))
+            if outcome == "interdit":
+                app.store.audit(user["id"], "validation_refusee_proprietaire", str(draft_id))
+                return self._json(403, {"error": "seul le propriétaire peut décider de ce brouillon"})
             if outcome == "contenu_modifie":
                 app.store.audit(user["id"], "validation_refusée_contenu_modifié", str(draft_id))
                 return self._json(409, {"error": "le brouillon a changé : relisez-le avant de décider"})
             if outcome in ("inconnu", "deja_decide"):
                 return self._json(409, {"error": "brouillon inconnu ou déjà décidé"})
-            if outcome == "approuve":
-                # L'approbation n'envoie rien : l'envoi est un second geste explicite, vérifié par empreinte.
-                app.store.set_delivery_note(draft_id, "approuvé : prêt à envoyer")
             app.store.audit(user["id"], "brouillon_" + outcome, str(draft_id))
             self._json(200, {"statut": outcome, "livraison": "approuvé : prêt à envoyer"
                              if outcome == "approuve" else None})
@@ -667,10 +670,13 @@ def make_handler(app: App):
             if code == "deja_terminee":
                 return self._json(409, {"error": "mission déjà terminée"})
             mission = app.store.mission(mission_id)
-            hermes = app.hermes_for(user["login"]) or app.hermes
-            stopped = bool(mission and mission["run_id"] and hermes.stop(mission["run_id"]))
-            app.store.audit(user["id"], "mission_arret", f"{mission_id} moteur={stopped}")
-            self._json(200, {"statut": "arret_demande", "moteur": stopped})
+            owner = app.store.user_by_id(mission['user_id']) if mission else None
+            hermes = app.hermes_for(owner['login']) if owner is not None else None
+            stopped = bool(mission and mission['run_id'] and hermes is not None and hermes.stop(mission['run_id']))
+            app.store.audit(user['id'], 'mission_arret', f'{mission_id} moteur={stopped}')
+            self._json(200 if stopped else 502,
+                       {'statut': 'arret_demande' if stopped else 'arret_non_confirme', 'moteur': stopped,
+                        'error': None if stopped else 'le moteur du propriétaire ne confirme pas la demande d’arrêt'})
 
         def _audit(self) -> None:
             user = self._user()
@@ -722,14 +728,21 @@ def make_handler(app: App):
                 messages = {"inconnu": (404, "brouillon inconnu"), "interdit": (403, "brouillon d'un autre compte"),
                             "non_approuve": (409, "le brouillon doit être approuvé avant envoi"),
                             "deja_en_cours": (409, "envoi déjà effectué ou en cours"),
+                            "ancien_brouillon": (409, "ancien brouillon sans objet/expéditeur validés : recréez-le"),
                             "contenu_modifie": (409, "le contenu a changé depuis l'approbation : relisez-le")}
                 status, message = messages.get(code, (409, "envoi impossible"))
                 return self._json(status, {"error": message})
-            engagement = app.store.engagement(row["engagement_id"])
-            subject = f"ARPAGONA — {engagement['subject']}" if engagement else "Message ARPAGONA"
+            if row['sender'] != app.mailer.sender:
+                app.store.mark_send_failed(draft_id, 'expéditeur configuré différent du message approuvé')
+                return self._json(409, {'error': 'expéditeur modifié : recréer et approuver le brouillon'})
             try:
-                message_id = app.mailer.send(row["target"], subject, row["body"])
+                message_id = app.mailer.send(row['target'], row['subject'], row['body'],
+                                            message_id=row['send_message_id'])
             except MailError as exc:
+                if exc.uncertain:
+                    app.store.mark_send_uncertain(draft_id)
+                    app.store.audit(user['id'], 'envoi_inconnu', str(draft_id))
+                    return self._json(502, {'error': str(exc), 'statut': 'inconnu'})
                 app.store.mark_send_failed(draft_id, str(exc))
                 app.store.audit(user["id"], "envoi_echec", f"{draft_id} {exc}")
                 return self._json(502, {"error": f"envoi échoué : {exc}"})
@@ -801,8 +814,10 @@ def make_handler(app: App):
             body = str(data.get("corps", "")).strip()
             if not target or not body or len(body) > 8000:
                 return self._json(400, {"error": "cible ou corps manquant"})
+            subject = 'ARPAGONA — ' + engagement['subject']
+            sender = app.mailer.sender if app.mailer is not None else 'contact@arpagona.com'
             draft_id = app.store.add_draft(engagement_id, user["id"], target, body,
-                                           fingerprint(target, body))
+                                           mail_fingerprint(target, subject, body, sender), subject, sender)
             app.store.release_engagement(engagement_id, "en_attente")
             app.store.audit(user["id"], "brouillon_créé", f"{draft_id} engagement {engagement_id}")
             self._json(201, {"id": draft_id, "statut": "en_attente"})

@@ -1,76 +1,107 @@
-"""Envoi courriel de l'API ARPAGONA.
-
-Un seul canal sortant. L'agent ne l'atteint jamais : seul le serveur, après approbation
-explicite d'un brouillon et recalcul de son empreinte, peut appeler ``Mailer.send``.
+"""SMTP approuvé : enveloppe explicite, identifiant persistant, aucune reprise automatique.
+Accepté SMTP ne signifie pas reçu/lu. Une coupure après DATA est incertaine.
 """
 from __future__ import annotations
-
+import ipaddress
 import os
 import smtplib
 import ssl
 from collections.abc import Mapping
+from email.headerregistry import Address
 from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from pathlib import Path
 
 
 class MailError(Exception):
-    """Échec d'envoi lisible par l'utilisateur, sans fuite de secret."""
+    def __init__(self, message: str, uncertain: bool = False):
+        super().__init__(message)
+        self.uncertain = uncertain
+
+
+def mailbox(value: str) -> str:
+    """Une adresse brute : ni liste, ni nom affiché, ni injection d'en-tête."""
+    if not isinstance(value, str) or any(c in value for c in '\r\n,;<>'):
+        raise MailError('adresse invalide : une seule boîte autorisée')
+    try:
+        parsed = Address(addr_spec=value)
+    except (ValueError, IndexError) as exc:
+        raise MailError('adresse courriel invalide') from exc
+    if not parsed.username or not parsed.domain or parsed.addr_spec != value:
+        raise MailError('adresse courriel invalide')
+    return value
 
 
 class Mailer:
-    def __init__(self, host: str, port: int = 587, user: str = "", password: str = "",
-                 sender: str = "", starttls: bool = True, timeout_s: float = 15.0):
-        self.host = host
-        self.port = int(port)
-        self.user = user
-        self._password = password
-        self.sender = sender or user
-        self.starttls = starttls
-        self.timeout = timeout_s
+    def __init__(self, host: str, port: int = 587, user: str = '', password: str = '',
+                 sender: str = '', starttls: bool = True, timeout_s: float = 15.0, allowed_to: tuple[str, ...] = ()):
+        self.host, self.port, self.user = host, int(port), user
+        self._password, self.sender = password, sender or user
+        self.starttls, self.timeout = starttls, timeout_s
+        self.allowed_to = allowed_to
+        try:
+            local = ipaddress.ip_address(host).is_loopback
+        except ValueError:
+            local = host == 'localhost'
+        if not starttls and self.port != 465 and (not local or user or password):
+            raise ValueError('SMTP distant/authentifié sans TLS interdit')
 
     @classmethod
-    def from_env(cls, env: Mapping[str, str] | None = None) -> "Mailer | None":
+    def from_env(cls, env: Mapping[str, str] | None = None) -> 'Mailer | None':
         env = os.environ if env is None else env
-        host = (env.get("ARPAGONA_SMTP_HOST") or "").strip()
+        host = env.get('ARPAGONA_SMTP_HOST', '').strip()
         if not host:
             return None
-        password = env.get("ARPAGONA_SMTP_PASSWORD") or ""
-        pw_file = (env.get("ARPAGONA_SMTP_PASSWORD_FILE") or "").strip()
-        if not password and pw_file and Path(pw_file).is_file():
-            password = Path(pw_file).read_text(encoding="utf-8").strip()
-        try:
-            port = int(env.get("ARPAGONA_SMTP_PORT") or 587)
-        except ValueError:
-            port = 587
-        return cls(host, port, env.get("ARPAGONA_SMTP_USER", ""), password,
-                   env.get("ARPAGONA_SMTP_FROM", "") or env.get("ARPAGONA_SMTP_USER", ""),
-                   (env.get("ARPAGONA_SMTP_STARTTLS", "1") != "0"))
+        password = env.get('ARPAGONA_SMTP_PASSWORD', '')
+        path = env.get('ARPAGONA_SMTP_PASSWORD_FILE', '').strip()
+        if not password and path:
+            password = Path(path).read_text(encoding='utf-8').strip()
+        return cls(host, int(env.get('ARPAGONA_SMTP_PORT', '587')),
+                   env.get('ARPAGONA_SMTP_USER', ''), password,
+                   env.get('ARPAGONA_SMTP_FROM', '') or env.get('ARPAGONA_SMTP_USER', ''),
+                   env.get('ARPAGONA_SMTP_STARTTLS', '1') != '0',
+                   allowed_to=tuple(x.strip() for x in env.get('ARPAGONA_SMTP_ALLOWED_TO', '').split(',') if x.strip()))
 
-    def __repr__(self) -> str:  # ne jamais afficher le mot de passe
-        return f"Mailer(host={self.host!r}, port={self.port}, sender={self.sender!r})"
+    def __repr__(self):
+        return f'Mailer(host={self.host!r}, port={self.port}, sender={self.sender!r})'
 
-    def send(self, to: str, subject: str, body: str) -> str:
-        to = (to or "").strip()
-        subject = (subject or "").strip()
-        if not to or "@" not in to or any(ch in to for ch in "\r\n"):
-            raise MailError("destinataire invalide")
-        if any(ch in subject for ch in "\r\n"):
-            raise MailError("objet invalide")
+    def send(self, to: str, subject: str, body: str, message_id: str | None = None) -> str:
+        mailbox(to)
+        mailbox(self.sender)
+        if self.allowed_to and to not in self.allowed_to:
+            raise MailError('destinataire hors liste de recette autorisée')
+        if not isinstance(subject, str) or not subject or any(c in subject for c in '\r\n'):
+            raise MailError('objet invalide')
+        if not isinstance(body, str):
+            raise MailError('corps invalide')
         msg = EmailMessage()
-        msg["From"] = self.sender
-        msg["To"] = to
-        msg["Subject"] = subject or "Message ARPAGONA"
-        msg["Date"] = formatdate(localtime=True)
-        msg["Message-ID"] = make_msgid(domain="arpagona.com")
-        msg.set_content(body or "")
+        msg['From'], msg['To'], msg['Subject'] = self.sender, to, subject
+        msg['Date'] = formatdate(localtime=True)
+        msg['Message-ID'] = message_id or make_msgid(domain='arpagona.com')
+        msg.set_content(body)
+        smtp = None
+        submitted = False
         try:
-            with smtplib.SMTP(self.host, self.port, timeout=self.timeout) as smtp:
+            if self.port == 465:
+                smtp = smtplib.SMTP_SSL(self.host, self.port, timeout=self.timeout,
+                                       context=ssl.create_default_context())
+            else:
+                smtp = smtplib.SMTP(self.host, self.port, timeout=self.timeout)
                 if self.starttls:
                     smtp.starttls(context=ssl.create_default_context())
-                if self.user:
-                    smtp.login(self.user, self._password)
-                smtp.send_message(msg)
-        except (smtplib.SMTPException, OSError, ssl.SSLError) as exc:
-            raise MailError(f"courriel non remis ({type(exc).__name__})") from exc
-        return str(msg["Message-ID"])
+            if self.user:
+                smtp.login(self.user, self._password)
+            submitted = True
+            smtp.send_message(msg, from_addr=self.sender, to_addrs=[to])
+        except (smtplib.SMTPRecipientsRefused, smtplib.SMTPSenderRefused, smtplib.SMTPDataError) as exc:
+            raise MailError(f'refus SMTP explicite ({type(exc).__name__})') from exc
+        except (smtplib.SMTPException, OSError) as exc:
+            message = 'remise incertaine : vérifier avant toute nouvelle tentative' if submitted else 'connexion SMTP échouée avant remise'
+            raise MailError(message, uncertain=submitted) from exc
+        finally:
+            if smtp is not None:
+                try:
+                    smtp.quit()
+                except (OSError, smtplib.SMTPException):
+                    smtp.close()  # QUIT échoué ne transforme pas DATA accepté en échec.
+        return str(msg['Message-ID'])
