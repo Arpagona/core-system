@@ -27,6 +27,9 @@ class FakeEngine:
         self.sessions = []
         self.keys = []
         self.instructions = []
+        self.costs = {}
+        self.status = {}
+        self.stopped = []
         self.fail_next = False
         engine = self
 
@@ -45,12 +48,19 @@ class FakeEngine:
             def do_POST(self):
                 if self.headers.get("Authorization") != "Bearer cle-de-test":
                     return self._send(401, {})
+                if self.path.endswith("/stop"):
+                    run_id = self.path.split("/")[3]
+                    engine.stopped.append(run_id)
+                    engine.status[run_id] = "cancelled"
+                    return self._send(200, {"run_id": run_id, "status": "stopping"})
                 data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 if engine.fail_next:
                     engine.fail_next = False
                     return self._send(503, {})
                 run_id = f"run_{len(engine.runs) + 1}"
                 engine.runs[run_id] = "écho : " + data["input"]
+                engine.status[run_id] = "completed"
+                engine.costs[run_id] = 0.0025
                 engine.sessions.append(data["session_id"])
                 engine.keys.append(self.headers.get("Idempotency-Key"))
                 engine.instructions.append(data.get("instructions"))
@@ -67,7 +77,9 @@ class FakeEngine:
                     for part in ("écho", " : …"):
                         self.wfile.write(("data: " + json.dumps({"event": "message.delta", "delta": part}) + "\n\n").encode())
                     return
-                self._send(200, {"run_id": run_id, "status": "completed", "output": engine.runs[run_id]})
+                self._send(200, {"run_id": run_id, "status": engine.status.get(run_id, "completed"),
+                                 "output": engine.runs.get(run_id, ""),
+                                 "usage": {"cost_usd": engine.costs.get(run_id, 0.0)}})
 
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
         self.server.daemon_threads = True

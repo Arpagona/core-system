@@ -97,7 +97,7 @@ class PosteLocal(unittest.TestCase):
         status, corps = self.appel("/api/drafts/decide",
                                    {"id": brouillon["id"], "approve": True, "empreinte": brouillon["empreinte"]})
         self.assertEqual(status, 200)
-        self.assertEqual(json.loads(corps)["livraison"], "non envoyé : aucun connecteur autorisé")
+        self.assertEqual(json.loads(corps)["livraison"], "approuvé : prêt à envoyer")
         self.assertEqual(self.appel("/api/drafts/decide", {"id": brouillon["id"], "approve": False,
                                                            "empreinte": brouillon["empreinte"]})[0], 409)
 

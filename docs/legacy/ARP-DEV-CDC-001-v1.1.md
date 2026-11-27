@@ -1,5 +1,9 @@
 # ARPAGONA — Cahier des charges de préparation de l’atelier de développement commun
 
+> **⚠ DOCUMENT CADUC — ARCHIVE. Ne pas s’y référer pour construire le produit.**
+> Remplacé le 27/11/2026 par **[CDC produit v2.0](../CDC-PRODUIT-v2.0.md)** (réf. ARP-PROD-CDC-002).
+> Motifs : le noyau Rust a été remplacé par une surcouche du Hermès Agent (ADR 0007), l’atelier à trois co-concepteurs n’est plus le mode de développement, et l’amélioration continue du noyau est hors périmètre produit. Conservé pour l’historique des décisions.
+
 **Référence :** ARP-DEV-CDC-001  
 **Version :** 1.1 — mandat de préparation pour GONA, étendu à la mesure de qualité du noyau  
 **Date :** 11 novembre 2026 (v1.0 : 10 novembre 2026)  

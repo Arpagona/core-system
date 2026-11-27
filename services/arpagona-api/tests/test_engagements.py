@@ -97,7 +97,7 @@ class EngagementApiTest(unittest.TestCase):
         self.assertEqual(status, 200)
         result = json.loads(body)
         self.assertEqual(result["statut"], "approuve")
-        self.assertIn("non envoyé", result["livraison"])
+        self.assertIn("prêt à envoyer", result["livraison"])
         drafts = json.loads(alice.call("GET", "/api/drafts")[1])["drafts"]
         self.assertEqual(drafts[0]["statut"], "approuve")
         # seconde décision refusée

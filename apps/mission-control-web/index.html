@@ -20,7 +20,9 @@
 <main id="app-view" class="layout" hidden>
  <nav id="nav" aria-label="Sections">
   <button class="tab on" data-view="chat">Conversation</button><button class="tab mobile-tab" data-view="kanban">Kanban</button>
+  <button class="tab" data-view="missions">Missions</button>
   <button class="tab" data-view="drafts">Approbations</button><button class="tab" data-view="engagements">Engagements</button>
+  <button class="tab" data-view="audit">Journal</button>
  </nav>
  <div class="workspace">
  <section id="view-chat" class="chat panel">
@@ -29,10 +31,14 @@
   <p id="chat-status" class="status" role="status"></p>
   <form id="chat-form" class="composer"><label for="text" class="sr">Votre message</label>
    <textarea id="text" rows="3" maxlength="8000" placeholder="Une question, une mission, une idée…" required></textarea>
-   <div class="composer-bottom"><button id="send" class="btn primary" type="submit">Envoyer ↗</button></div>
+   <div class="composer-bottom"><button id="mic" class="btn ghost" type="button" hidden aria-pressed="false" title="Dicter (navigateur)">🎤 Dicter</button><button id="speak" class="btn ghost" type="button" hidden title="Lire la dernière réponse">🔊 Lire</button><button id="send" class="btn primary" type="submit">Envoyer ↗</button></div>
   </form>
  </section>
- <section id="view-drafts" class="page panel" hidden><p class="eyebrow">Validation humaine</p><h2>Approbations</h2><p class="hint">Vous gardez la main. Un brouillon approuvé reste à copier : aucun envoi automatique.</p><div id="drafts-list" class="cards"></div></section>
+ <section id="view-missions" class="page panel" hidden><p class="eyebrow">Ce qui travaille</p><h2>Missions</h2>
+  <p class="hint">Chaque demande longue devient une mission : ce qu'elle fait, ce qu'elle a coûté, et un bouton pour l'arrêter. <span id="budget"></span></p>
+  <div id="missions-list" class="cards"></div></section>
+ <section id="view-drafts" class="page panel" hidden><p class="eyebrow">Validation humaine</p><h2>Approbations</h2><p class="hint">Vous gardez la main : l'approbation autorise ce texte exact, l'envoi est un second geste. Rien ne part sans vous.</p><div id="drafts-list" class="cards"></div></section>
+ <section id="view-audit" class="page panel" hidden><p class="eyebrow">La preuve</p><h2>Journal</h2><p class="hint">Chaque connexion, décision, envoi et refus, horodaté. Aucun mot de passe, aucune clé.</p><div id="audit-list" class="cards"></div></section>
  <section id="view-engagements" class="page panel" hidden><p class="eyebrow">Ne rien laisser passer</p><h2>Engagements</h2><p class="hint">Les décisions datées. À l'échéance, l'agent prépare un brouillon, jamais un envoi.</p><div id="engagements-list" class="cards"></div></section>
  <section id="view-kanban" class="kanban panel">
   <div class="section-head"><div><p class="eyebrow">Du cap à l'action</p><h2>Kanban</h2></div><button id="new-card" class="btn">+ Nouvelle carte</button></div>

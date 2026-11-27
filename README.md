@@ -2,7 +2,7 @@
 
 Surcouche produit du Hermès Agent officiel épinglé en v0.23.1 : Mission Control web, API ARPAGONA (comptes, approbations et engagements), plugin `arpagona-core` et mémoire Hindsight. Architecture retenue : une instance par client ; son isolation entre deux instances reste à démontrer.
 
-**État : banc de test, pas de production client.** Ne pas utiliser de données réelles sans validation et garanties adaptées.
+**État : banc de test, pas de production client.** Ne pas utiliser de données réelles sans validation et garanties adaptées. Le cahier des charges produit de référence est [`docs/CDC-PRODUIT-v2.0.md`](docs/CDC-PRODUIT-v2.0.md) (ARP-PROD-CDC-002).
 
 ## Essayer en 2 minutes
 
@@ -38,8 +38,15 @@ python3 -m unittest discover -s tests/dev -v
 ## Mission Control
 
 - Chat au centre : une conversation unique par compte, conservée entre les visites.
+- **Missions** : chaque demande devient une mission suivie (statut, durée, coût, résultat), arrêtable. Plafonds de dépense par mission et par jour, appliqués côté API.
+- **Approbations** : un brouillon porte une empreinte SHA-256 du texte approuvé ; l'envoi courriel est un second geste explicite, refusé si le contenu a changé. Un seul canal sortant : le courriel (SMTP).
+- **Journal** : les 200 derniers événements (connexion, décision, envoi, refus), sans secret. Visible en entier par l'admin, limité à ses propres événements pour un membre.
+- **Rôles** : `admin` (comptes, export, journal complet) et `membre`. Le premier compte d'une instance est toujours admin.
+- **Export** : JSON complet des données métier, réservé à l'admin.
 - Kanban : celui de l'instance Hermès du client, lu et modifié via `services/kanban-bridge/` (service local 127.0.0.1:8701, jeton dédié, liste blanche d'opérations sur la CLI officielle `hermes kanban`). Les cartes créées depuis l'interface n'ont pas d'affectation : aucun agent n'est déclenché.
-- Approbations et Engagements en onglets ; mobile : chat d'abord.
+- Engagements en onglet ; mobile : chat d'abord. Dictée et lecture via le navigateur (aucun audio conservé).
+
+Configuration de l'envoi : `deploy/atlas/mail.env.example`. Sans SMTP configuré, l'API démarre et l'interface indique que l'envoi est indisponible.
 
 ### Accès réseau local (banc de test uniquement)
 

@@ -15,7 +15,12 @@ def main() -> None:
     add = sub.add_parser("add-user", help="créer un compte")
     add.add_argument("login")
     add.add_argument("--name", required=True, help="nom affiché")
+    add.add_argument("--role", choices=("admin", "membre"), default="membre",
+                     help="admin ou membre (le premier compte est toujours admin)")
     add.add_argument("--password-stdin", action="store_true")
+    role = sub.add_parser("set-role", help="changer le rôle d'un compte")
+    role.add_argument("login")
+    role.add_argument("role", choices=("admin", "membre"))
     pwd = sub.add_parser("set-password", help="changer le mot de passe d'un compte")
     pwd.add_argument("login")
     pwd.add_argument("--password-stdin", action="store_true")
@@ -29,6 +34,14 @@ def main() -> None:
         store.audit(None, "compte_supprimé" if found else "compte_introuvable", args.login)
         print(f"compte supprimé : {args.login}" if found else f"compte introuvable : {args.login}")
         sys.exit(0 if found else 1)
+    if args.cmd == "set-role":
+        try:
+            found = store.set_role(args.login, args.role)
+        except ValueError as exc:
+            sys.exit(str(exc))
+        store.audit(None, "role_changé" if found else "compte_introuvable", f"{args.login} {args.role}")
+        print(f"rôle changé : {args.login} → {args.role}" if found else f"compte introuvable : {args.login}")
+        sys.exit(0 if found else 1)
     if args.cmd == "set-password":
         password = sys.stdin.readline().rstrip("\n") if args.password_stdin else getpass.getpass("Mot de passe : ")
         try:
@@ -40,7 +53,7 @@ def main() -> None:
         sys.exit(0 if found else 1)
     password = sys.stdin.readline().rstrip("\n") if args.password_stdin else getpass.getpass("Mot de passe : ")
     try:
-        user_id = store.add_user(args.login, args.name, password)
+        user_id = store.add_user(args.login, args.name, password, getattr(args, "role", "membre"))
     except ValueError as exc:
         sys.exit(str(exc))
     store.audit(user_id, "compte_créé", args.login)
