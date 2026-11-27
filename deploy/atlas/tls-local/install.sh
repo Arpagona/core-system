@@ -11,7 +11,7 @@ bash "$here/backup.sh" "$backup"
 # Ne jamais démarrer le serveur nginx par défaut ni ouvrir son port 80.
 if ! command -v nginx >/dev/null; then
   systemctl mask --runtime nginx.service
-  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx-core
+  DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nginx
   systemctl disable nginx.service
 fi
 if [ ! -e /etc/arpagona-tls ]; then bash "$here/generate-ca.sh" /etc/arpagona-tls; fi
@@ -27,10 +27,21 @@ systemctl daemon-reload
 trap 'echo "Échec : retour arrière $backup" >&2; bash "$here/rollback.sh" "$backup"' ERR
 systemctl disable --now arpagona-gona-relay.service
 systemctl restart arpagona-api.service
-for _ in {1..20}; do curl -fsS --max-time 2 http://127.0.0.1:8700/api/health >/dev/null && break || sleep 1; done
+ready=0
+for _ in {1..20}; do
+  if curl -fsS --max-time 2 http://127.0.0.1:8700/api/health >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+[ "$ready" = 1 ] || { echo 'API non prête après 20 essais' >&2; false; }
 install -d -m 755 /run/arpagona-tls
 /usr/sbin/nginx -t -c /etc/arpagona-tls/nginx.conf
 systemctl enable --now arpagona-tls.service
+ready=0
+for _ in {1..20}; do
+  if curl -fsS --max-time 3 --cacert /etc/arpagona-tls/ca.crt https://192.168.68.240:8700/api/health >/dev/null 2>&1; then ready=1; break; fi
+  sleep 1
+done
+[ "$ready" = 1 ] || { echo 'Proxy TLS non prêt après 20 essais' >&2; false; }
 curl -fsS --max-time 10 --cacert /etc/arpagona-tls/ca.crt https://192.168.68.240:8700/api/health
 trap - ERR
 printf '\nTLS actif. Sauvegarde rollback : %s\nCertificat PUBLIC client : /etc/arpagona-tls/ca.crt\n' "$backup"
