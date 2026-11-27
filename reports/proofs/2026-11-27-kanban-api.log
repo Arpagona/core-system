@@ -1,0 +1,110 @@
+test_chaque_compte_atteint_son_moteur (test_agents_isolation.IsolationTest.test_chaque_compte_atteint_son_moteur) ... ok
+test_chargement_depuis_fichiers (test_agents_isolation.IsolationTest.test_chargement_depuis_fichiers) ... ok
+test_compte_sans_agent_refuse_net (test_agents_isolation.IsolationTest.test_compte_sans_agent_refuse_net) ... ok
+test_decision_visible_mais_seul_le_responsable_approuve (test_agents_isolation.IsolationTest.test_decision_visible_mais_seul_le_responsable_approuve) ... ok
+test_equipe_accessible_sans_inferer_les_responsables_des_cartes (test_agents_isolation.IsolationTest.test_equipe_accessible_sans_inferer_les_responsables_des_cartes) ... ok
+test_jeton_d_outils_limite_a_son_proprietaire (test_agents_isolation.IsolationTest.test_jeton_d_outils_limite_a_son_proprietaire) ... ok
+test_kanban_commun_visible_des_deux_avec_responsables (test_agents_isolation.IsolationTest.test_kanban_commun_visible_des_deux_avec_responsables) ... ok
+test_registre_refuse_jeton_partage (test_agents_isolation.IsolationTest.test_registre_refuse_jeton_partage) ... ok
+test_chat_relaye_et_conserve (test_api.ApiTest.test_chat_relaye_et_conserve) ... ok
+test_cle_d_idempotence_unique_apres_suppression (test_api.ApiTest.test_cle_d_idempotence_unique_apres_suppression)
+Un compte supprimé puis un nouveau compte réutilisent les mêmes numéros de ligne : la clé doit différer. ... ok
+test_cookie_protege (test_api.ApiTest.test_cookie_protege) ... ok
+test_deconnexion (test_api.ApiTest.test_deconnexion) ... ok
+test_fichiers_hors_racine_refuses (test_api.ApiTest.test_fichiers_hors_racine_refuses) ... ok
+test_journal (test_api.ApiTest.test_journal) ... ok
+test_kanban_erreurs_controlees (test_api.ApiTest.test_kanban_erreurs_controlees) ... ok
+test_kanban_non_configure_chat_preserve (test_api.ApiTest.test_kanban_non_configure_chat_preserve) ... ok
+test_kanban_relais_et_audit (test_api.ApiTest.test_kanban_relais_et_audit) ... ok
+test_kanban_sans_session (test_api.ApiTest.test_kanban_sans_session) ... ok
+test_manifeste_application_installable (test_api.ApiTest.test_manifeste_application_installable) ... ok
+test_mauvais_mot_de_passe_puis_blocage (test_api.ApiTest.test_mauvais_mot_de_passe_puis_blocage) ... ok
+test_meme_utilisateur_meme_session_moteur (test_api.ApiTest.test_meme_utilisateur_meme_session_moteur) ... ok
+test_moteur_arrete (test_api.ApiTest.test_moteur_arrete) ... ok
+test_new_garde_les_autres_comptes_et_l_archive (test_api.ApiTest.test_new_garde_les_autres_comptes_et_l_archive) ... ok
+test_new_ouvre_une_conversation_neuve (test_api.ApiTest.test_new_ouvre_une_conversation_neuve) ... ok
+test_new_refuse_si_reponse_en_cours (test_api.ApiTest.test_new_refuse_si_reponse_en_cours) ... ok
+test_reponse_en_attente_reglee_a_la_reconnexion (test_api.ApiTest.test_reponse_en_attente_reglee_a_la_reconnexion) ... ok
+test_requete_sans_marqueur_refusee (test_api.ApiTest.test_requete_sans_marqueur_refusee) ... ok
+test_sans_session_tout_est_refuse (test_api.ApiTest.test_sans_session_tout_est_refuse) ... ok
+test_separation_des_utilisateurs (test_api.ApiTest.test_separation_des_utilisateurs) ... ok
+test_status_et_commande_inconnue (test_api.ApiTest.test_status_et_commande_inconnue) ... ok
+test_suppression_de_compte (test_api.ApiTest.test_suppression_de_compte) ... ok
+test_approbation_du_brouillon_d_autrui_refusee (test_beta.BetaTest.test_approbation_du_brouillon_d_autrui_refusee) ... ok
+test_approbation_exige_boolean_strict (test_beta.BetaTest.test_approbation_exige_boolean_strict) ... ok
+test_arret_demande_transmet_au_moteur (test_beta.BetaTest.test_arret_demande_transmet_au_moteur) ... ok
+test_arret_mission_d_autrui_refuse (test_beta.BetaTest.test_arret_mission_d_autrui_refuse) ... ok
+test_chat_cree_une_mission_terminee_avec_cout (test_beta.BetaTest.test_chat_cree_une_mission_terminee_avec_cout) ... ok
+test_depassement_plafond_mission_signale (test_beta.BetaTest.test_depassement_plafond_mission_signale) ... ok
+test_echec_smtp_trace_sans_reprise (test_beta.BetaTest.test_echec_smtp_trace_sans_reprise) ... ok
+test_envoi_apres_approbation (test_beta.BetaTest.test_envoi_apres_approbation) ... ok
+test_envoi_du_brouillon_d_autrui_refuse (test_beta.BetaTest.test_envoi_du_brouillon_d_autrui_refuse) ... ok
+test_envoi_empreinte_erronee_refuse (test_beta.BetaTest.test_envoi_empreinte_erronee_refuse) ... ok
+test_envoi_sans_approbation_refuse (test_beta.BetaTest.test_envoi_sans_approbation_refuse) ... ok
+test_envoi_sans_configuration (test_beta.BetaTest.test_envoi_sans_configuration) ... ok
+test_membre_ne_peut_pas_exporter (test_beta.BetaTest.test_membre_ne_peut_pas_exporter) ... ok
+test_membre_ne_voit_que_son_journal (test_beta.BetaTest.test_membre_ne_voit_que_son_journal) ... ok
+test_plafond_journalier_refuse_la_mission_suivante (test_beta.BetaTest.test_plafond_journalier_refuse_la_mission_suivante) ... ok
+test_roles_visibles_et_premier_compte_admin (test_beta.BetaTest.test_roles_visibles_et_premier_compte_admin) ... ok
+test_bridge_disabled_without_key (test_bridge.BridgeCookieTest.test_bridge_disabled_without_key) ... ok
+test_logout_clears_both_cookies (test_bridge.BridgeCookieTest.test_logout_clears_both_cookies) ... ok
+test_mael_never_receives_bridge_cookie (test_bridge.BridgeCookieTest.test_mael_never_receives_bridge_cookie) ... ok
+test_me_exposes_gona_switch_only_for_thibaud (test_bridge.BridgeCookieTest.test_me_exposes_gona_switch_only_for_thibaud) ... ok
+test_me_has_no_switch_when_bridge_disabled (test_bridge.BridgeCookieTest.test_me_has_no_switch_when_bridge_disabled) ... ok
+test_me_hides_switch_when_bridge_disabled (test_bridge.BridgeCookieTest.test_me_hides_switch_when_bridge_disabled) ... ok
+test_me_shows_switch_for_thibaud_only (test_bridge.BridgeCookieTest.test_me_shows_switch_for_thibaud_only) ... ok
+test_thibaud_receives_bridge_cookie_valid_90_days (test_bridge.BridgeCookieTest.test_thibaud_receives_bridge_cookie_valid_90_days) ... ok
+test_wrong_password_gives_no_cookie (test_bridge.BridgeCookieTest.test_wrong_password_gives_no_cookie) ... ok
+test_expired (test_bridge.BridgeTokenTest.test_expired) ... ok
+test_login_not_allowed_is_refused (test_bridge.BridgeTokenTest.test_login_not_allowed_is_refused) ... ok
+test_roundtrip (test_bridge.BridgeTokenTest.test_roundtrip) ... ok
+test_short_key_and_bad_login (test_bridge.BridgeTokenTest.test_short_key_and_bad_login) ... ok
+test_wrong_key_and_tampering (test_bridge.BridgeTokenTest.test_wrong_key_and_tampering) ... ok
+test_brouillon_d_un_autre_utilisateur_inaccessible (test_engagements.EngagementApiTest.test_brouillon_d_un_autre_utilisateur_inaccessible) ... ok
+test_brouillon_et_validation (test_engagements.EngagementApiTest.test_brouillon_et_validation) ... ok
+test_date_sans_fuseau_refusee (test_engagements.EngagementApiTest.test_date_sans_fuseau_refusee) ... ok
+test_declencheur_produit_un_brouillon (test_engagements.EngagementApiTest.test_declencheur_produit_un_brouillon) ... ok
+test_echeance_reclamee_une_seule_fois (test_engagements.EngagementApiTest.test_echeance_reclamee_une_seule_fois) ... ok
+test_engagement_enregistre_et_liste (test_engagements.EngagementApiTest.test_engagement_enregistre_et_liste) ... ok
+test_refus_du_brouillon (test_engagements.EngagementApiTest.test_refus_du_brouillon) ... ok
+test_service_sans_jeton_refuse (test_engagements.EngagementApiTest.test_service_sans_jeton_refuse) ... ok
+test_session_inconnue_refusee (test_engagements.EngagementApiTest.test_session_inconnue_refusee) ... ok
+test_empreinte (test_engagements.ParseTest.test_empreinte) ... ok
+test_parse_due (test_engagements.ParseTest.test_parse_due) ... ok
+test_canonical_fields_all_matter (test_mail_security.MailStoreTest.test_canonical_fields_all_matter) ... ok
+test_legacy_draft_cannot_be_sent (test_mail_security.MailStoreTest.test_legacy_draft_cannot_be_sent) ... ok
+test_mutation_subject_refused (test_mail_security.MailStoreTest.test_mutation_subject_refused) ... ok
+test_restart_after_claim_does_not_replay (test_mail_security.MailStoreTest.test_restart_after_claim_does_not_replay) ... ok
+test_two_connections_one_claim (test_mail_security.MailStoreTest.test_two_connections_one_claim) ... ok
+test_disconnect_during_submission_is_uncertain (test_mail_security.SMTPWireTest.test_disconnect_during_submission_is_uncertain) ... ok
+test_multiple_recipients_and_header_injection_refused (test_mail_security.SMTPWireTest.test_multiple_recipients_and_header_injection_refused) ... ok
+test_plaintext_auth_or_remote_forbidden (test_mail_security.SMTPWireTest.test_plaintext_auth_or_remote_forbidden) ... ok
+test_real_local_smtp_envelope_and_message_id (test_mail_security.SMTPWireTest.test_real_local_smtp_envelope_and_message_id) ... ok
+test_recette_allowlist_before_network (test_mail_security.SMTPWireTest.test_recette_allowlist_before_network) ... ok
+test_deleted_account_audit_is_not_attached_to_next_account (test_roles_migration.RoleMigrationTest.test_deleted_account_audit_is_not_attached_to_next_account) ... ok
+test_last_admin_cannot_be_demoted (test_roles_migration.RoleMigrationTest.test_last_admin_cannot_be_demoted) ... ok
+test_reopen_does_not_promote_oldest_member (test_roles_migration.RoleMigrationTest.test_reopen_does_not_promote_oldest_member) ... ok
+test_239_minutes (test_rotation.RotationTest.test_239_minutes) ... ok
+test_chaine_limitee_200 (test_rotation.RotationTest.test_chaine_limitee_200) ... /home/thibaud/projects/core-system-kanban/services/arpagona-api/arpagona_api/server.py:443: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x79da51694a90>
+  {"id": r["id"], "role": r["role"], "text": r["content"], "status": r["status"], "at": r["created_at"], "conversation": r["conversation_id"]}
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_desactivee_et_status (test_rotation.RotationTest.test_desactivee_et_status) ... ok
+test_echec_reessaie_passation (test_rotation.RotationTest.test_echec_reessaie_passation) ... /home/thibaud/.hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/tempfile.py:538: ResourceWarning: Implicitly cleaning up <HTTPError 503: 'Service Unavailable'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_inactivite_passation_chaine_et_une_seule_fois (test_rotation.RotationTest.test_inactivite_passation_chaine_et_une_seule_fois) ... ok
+test_new_coupe_chaine (test_rotation.RotationTest.test_new_coupe_chaine) ... ok
+test_passation_limitee (test_rotation.RotationTest.test_passation_limitee) ... ok
+test_quotidienne (test_rotation.RotationTest.test_quotidienne) ... ok
+test_vide_et_pending (test_rotation.RotationTest.test_vide_et_pending) ... ok
+test_ancienne_base_migree_sans_perte (test_store_migration.MigrationTest.test_ancienne_base_migree_sans_perte) ... ok
+test_migration_schema_recent_idempotente (test_store_migration.MigrationTest.test_migration_schema_recent_idempotente) ... ok
+test_session_lasts_90_days_and_survives_a_week (test_store_password.SessionDurationTest.test_session_lasts_90_days_and_survives_a_week) ... ok
+test_change_password_closes_sessions (test_store_password.SetPasswordTest.test_change_password_closes_sessions) ... ok
+test_unknown_and_short (test_store_password.SetPasswordTest.test_unknown_and_short) ... ok
+
+----------------------------------------------------------------------
+Ran 99 tests in 75.051s
+
+OK

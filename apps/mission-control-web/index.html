@@ -19,7 +19,7 @@
 </main>
 <main id="app-view" class="layout" hidden>
  <nav id="nav" aria-label="Sections">
-  <button class="tab on" data-view="chat">Conversation</button><button class="tab mobile-tab" data-view="kanban">Kanban</button>
+  <button class="tab on" data-view="chat">Conversation</button><button class="tab" data-view="kanban">Kanban</button>
   <button class="tab" data-view="missions">Missions</button>
   <button class="tab" data-view="drafts">Approbations</button><button class="tab" data-view="engagements">Engagements</button>
   <button class="tab" data-view="audit">Journal</button>
@@ -42,13 +42,19 @@
  <section id="view-engagements" class="page panel" hidden><p class="eyebrow">Ne rien laisser passer</p><h2>Engagements</h2><p class="hint">Les décisions datées. À l'échéance, l'agent prépare un brouillon, jamais un envoi.</p><div id="engagements-list" class="cards"></div></section>
  <section id="view-kanban" class="kanban panel">
   <div class="section-head"><div><p class="eyebrow">Du cap à l'action</p><h2>Kanban</h2></div><button id="new-card" class="btn">+ Nouvelle carte</button></div>
-  <p class="hint">Le tableau de l'entreprise, commun à l'équipe · chaque carte a un responsable. Tout le monde voit et commente ; seul le responsable décide.</p><div class="filters" role="group" aria-label="Filtre des cartes"><button id="scope-all" class="btn on" type="button">Toutes les cartes</button><button id="scope-mine" class="btn ghost" type="button">Mes cartes</button></div><p id="kanban-status" role="status" class="status"></p><div id="board" class="board"></div>
+  <p class="hint kanban-intro">Un résultat attendu par carte. Un responsable pour agir. Les décisions restent au responsable ; aucune carte ne lance un agent.</p>
+  <div class="kanban-tools">
+   <label class="sr" for="kanban-search">Rechercher une carte</label><input id="kanban-search" type="search" placeholder="Titre, responsable ou identifiant…" autocomplete="off">
+   <div class="filters" role="group" aria-label="Responsable des cartes"><button id="scope-all" class="btn on" type="button" aria-pressed="true">Équipe</button><button id="scope-mine" class="btn ghost" type="button" aria-pressed="false">Mes cartes</button><button id="scope-unassigned" class="btn ghost" type="button" aria-pressed="false">Sans responsable</button></div>
+   <div class="kanban-options"><label for="kanban-mode">Vue</label><select id="kanban-mode"><option value="board">Tableau</option><option value="list">Liste</option></select><label class="inline-check"><input id="kanban-done" type="checkbox">Afficher les terminées</label><button id="kanban-reset" class="btn ghost" type="button" hidden>Effacer les filtres</button></div>
+  </div>
+  <p id="kanban-summary" class="hint"></p><p id="kanban-status" role="status" class="status"></p><div id="board" class="board" aria-label="Cartes de l'équipe"></div>
  </section>
  </div>
 </main>
 <footer>ARPAGONA · Données maîtrisées · Validation humaine <details><summary>À propos</summary>Hermes Agent — © Nous Research, licence MIT.</details></footer>
 <dialog id="card-dialog" aria-labelledby="card-title"><button id="close-card" class="close btn ghost" aria-label="Fermer">×</button><h2 id="card-title">Nouvelle carte</h2>
- <form id="create-card"><label for="card-name">Titre</label><input id="card-name" required maxlength="200"><label for="card-body">Description</label><textarea id="card-body" rows="4" maxlength="8000"></textarea><label for="card-assignee">Responsable</label><select id="card-assignee"></select><p class="hint">Aucun agent n'est déclenché par la création d'une carte.</p><button class="btn primary">Créer la carte</button></form>
- <div id="card-detail" hidden><p id="detail-meta" class="hint"></p><p id="detail-body"></p><h3>Commentaires</h3><div id="comments"></div><form id="comment-form"><label for="comment-text">Votre commentaire</label><textarea id="comment-text" required maxlength="8000" rows="3"></textarea><button class="btn">Commenter</button></form><div id="card-actions" class="actions"></div></div><p id="card-error" role="alert" class="error"></p>
+ <form id="create-card"><label for="card-name">Titre</label><input id="card-name" required maxlength="200"><label for="card-body">Résultat attendu et prochaine action</label><textarea id="card-body" rows="4" maxlength="8000" placeholder="Livrable attendu, critère de réussite, prochaine étape…"></textarea><label for="card-assignee">Responsable</label><select id="card-assignee"></select><p class="hint">Aucun agent n'est déclenché par la création d'une carte.</p><button class="btn primary">Créer la carte</button></form>
+ <div id="card-detail" hidden><p id="detail-meta" class="hint"></p><p id="detail-body"></p><p id="block-context" class="block-context" hidden></p><h3>Commentaires</h3><div id="comments"></div><form id="comment-form"><label for="comment-text">Votre commentaire</label><textarea id="comment-text" required maxlength="8000" rows="3"></textarea><button class="btn">Commenter</button></form><div id="card-actions" class="actions"></div><form id="block-form" hidden><label for="block-reason">Qu'est-ce qui empêche d'avancer ?</label><textarea id="block-reason" required maxlength="2000" rows="3" placeholder="Cause du blocage et condition pour reprendre…"></textarea><div class="actions"><button class="btn" type="submit">Confirmer le blocage</button><button id="cancel-block" class="btn ghost" type="button">Annuler</button></div></form></div><p id="card-error" role="alert" class="error"></p>
 </dialog>
-<script src="app.js"></script></body></html>
+<script src="kanban-view.js"></script><script src="app.js"></script></body></html>

@@ -56,6 +56,7 @@ async function start() {
   const res = await fetch("/api/me");
   if (res.status !== 200) { show("login"); return; }
   meUser = await res.json();
+  resetKanban();
   $("who-name").textContent = meUser.name;
   if (meUser.gona) {
     // Même hôte, port voisin : 8700 → 8710 (ou 18700 → 18710 sur l'iMac). La session de 90 jours est partagée.
@@ -83,6 +84,7 @@ $("login-form").addEventListener("submit", async (ev) => {
 $("logout").addEventListener("click", async () => {
   await fetch("/api/logout", { method: "POST", headers: HEADERS, body: "{}" });
   $("log").replaceChildren();
+  resetKanban();
   show("login");
 });
 
@@ -376,7 +378,8 @@ for (const tab of document.querySelectorAll(".tab")) {
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === tab));
     const view = tab.dataset.view;
     $("app-view").dataset.view = view;
-    $("view-chat").hidden = !["chat", "kanban"].includes(view);
+    $("view-chat").hidden = view !== "chat";
+    $("view-kanban").hidden = !["chat", "kanban"].includes(view);
     $("view-engagements").hidden = view !== "engagements";
     $("view-drafts").hidden = view !== "drafts";
     $("view-missions").hidden = view !== "missions";
@@ -393,61 +396,141 @@ const COLUMNS = [["todo", "À trier / À faire", ["triage", "todo"]], ["ready", 
 let selectedCard = null;
 let kanbanScope = "all";
 let meUser = null;
+let kanbanTasks = [], kanbanLoadSequence = 0, cardOpenSequence = 0;
+let kanbanSignature = "";
+function sessionExpired() {
+  resetKanban();
+  show("login");
+  $("login-error").textContent = "Session expirée. Reconnectez-vous pour continuer.";
+  $("login").focus();
+}
 async function kanban(op, data) {
   const res = await fetch("/api/kanban/" + op, data ? {method:"POST", headers:HEADERS, body:JSON.stringify(data)} : {});
-  const result = await res.json();
+  const result = await res.json().catch(() => ({}));
+  if (res.status === 401) { sessionExpired(); throw new Error("Session expirée : reconnectez-vous."); }
   if (!res.ok) throw new Error(result.error || "Kanban indisponible");
   return result;
 }
 function node(tag, text, cls) {
   const el = document.createElement(tag); el.textContent = text; if(cls) el.className = cls; return el;
 }
-async function loadKanban() {
-  if ($("app-view").hidden) return;
-  try {
-    const result = await kanban("list" + (kanbanScope === "mine" ? "?scope=mine" : ""));
-    const tasks = Array.isArray(result) ? result : (result.tasks || []);
-    $("board").replaceChildren();
-    for(const [key, title, states] of COLUMNS) {
-      const cards = tasks.filter(t => states.includes(t.status));
-      const col = node("section", "", "column"); col.dataset.status = key;
-      const h = node("h3", title); h.append(node("span", String(cards.length))); col.append(h);
-      for(const card of cards) {
-        const b = node("button", card.title, "task");
-        b.append(node("small", card.assignee || "Non affectée"));
-        b.addEventListener("click", () => openCard(card.id)); col.append(b);
-      }
-      $("board").append(col);
-    }
-    const owners = [...new Set(tasks.map(t => t.assignee).filter(Boolean))];
-    const select = $("card-assignee");
-    if (select && !select.dataset.ready) { fillAssignees(select, owners); }
-    $("kanban-status").textContent = "À jour · actualisation toutes les 10 s";
-  } catch(err) { $("kanban-status").textContent = "Kanban indisponible"; }
+function resetKanban() {
+  kanbanLoadSequence++; cardOpenSequence++; selectedCard = null;
+  kanbanTasks = []; kanbanSignature = ""; kanbanScope = "all";
+  $("board").replaceChildren(); $("kanban-summary").textContent = "";
+  $("comment-form").reset(); $("create-card").reset(); $("comments").replaceChildren();
+  $("detail-body").textContent=""; $("block-form").reset();
+  $("card-assignee").dataset.signature=""; fillAssignees($("card-assignee"),[]);
+  $("kanban-status").textContent = "";
+  $("kanban-search").value = ""; $("kanban-done").checked = false;
+  $("kanban-mode").value = window.matchMedia("(max-width:720px)").matches ? "list" : "board";
+  if ($("card-dialog").open) $("card-dialog").close();
+  setKanbanScope("all");
 }
-function fillAssignees(select, owners) {
-  select.dataset.ready = "1";
-  for (const login of [...new Set([meUser && meUser.login, ...owners].filter(Boolean))]) {
-    const o = node("option", login === (meUser && meUser.login) ? login + " (moi)" : login); o.value = login; select.append(o);
+function setKanbanScope(scope) {
+  kanbanScope = scope;
+  for (const key of ["all","mine","unassigned"]) {
+    const active = key === scope, btn = $("scope-"+key);
+    btn.className = "btn " + (active ? "on" : "ghost");
+    btn.setAttribute("aria-pressed",String(active));
+  }
+  renderKanban();
+}
+function renderKanban() {
+  const query = $("kanban-search").value, showDone = $("kanban-done").checked;
+  const cards = KanbanView.filter(kanbanTasks,{scope:kanbanScope,login:meUser?.login,query,showDone});
+  const mode = $("kanban-mode").value;
+  $("kanban-reset").hidden = !query && kanbanScope === "all" && !showDone;
+  const unassigned = cards.filter(t=>!t.assignee).length;
+  $("kanban-summary").textContent = `${cards.length} ${cards.length>1 ? "cartes affichées" : "carte affichée"}` + (unassigned ? ` · ${unassigned} sans responsable` : "");
+  const signature = JSON.stringify([mode,cards]);
+  if (signature === kanbanSignature) return; // ne pas perdre le focus à chaque actualisation
+  kanbanSignature = signature;
+  const board = $("board"), focusId = document.activeElement?.dataset.cardId;
+  const left = board.scrollLeft, top = board.scrollTop;
+  board.replaceChildren(); board.classList.toggle("is-list",mode === "list");
+  function cardButton(card) {
+    const btn = node("button","","task"); btn.type = "button"; btn.dataset.cardId = card.id;
+    btn.append(node("strong",card.title,"task-title"));
+    const meta = node("span","","task-meta");
+    const badge = node("span",KanbanView.label(card.status),"task-state"); badge.dataset.state = card.status;
+    meta.append(badge,node("span",card.assignee || "Sans responsable",card.assignee ? "task-owner" : "task-owner unassigned"));
+    btn.append(meta,node("small",card.id,"task-id"));
+    btn.addEventListener("click",()=>openCard(card.id)); return btn;
+  }
+  if (!cards.length) {
+    const restantes = kanbanTasks.filter(t=>t.status !== "done" && t.status !== "archived").length;
+    let aide;
+    if (!kanbanTasks.length) aide = "Le tableau est vide. Créez une carte avec un résultat attendu et un responsable.";
+    else if (!restantes && !showDone) aide = "Toutes les cartes sont terminées. Cochez « Afficher les terminées » pour les revoir.";
+    else aide = "Aucune carte dans cette sélection. Effacez les filtres pour revoir le tableau.";
+    board.append(node("p",aide,"kanban-empty"));
+  } else if (mode === "list") {
+    for (const card of KanbanView.order(cards)) board.append(cardButton(card));
+  } else {
+    const known = new Set(COLUMNS.flatMap(c=>c[2]));
+    const groups = [...COLUMNS,["other","Autres états",null]];
+    for (const [key,title,states] of groups) {
+      if (key === "done" && !showDone) continue;
+      const group = cards.filter(t=>states ? states.includes(t.status) : !known.has(t.status));
+      if (key === "other" && !group.length) continue;
+      const col = node("section","","column"); col.dataset.status = key;
+      const h = node("h3",title); h.append(node("span",String(group.length))); col.append(h);
+      if (!group.length) col.append(node("p","Aucune carte","column-empty"));
+      for (const card of KanbanView.order(group)) col.append(cardButton(card));
+      board.append(col);
+    }
+  }
+  board.scrollLeft = left; board.scrollTop = top;
+  if (focusId) [...board.querySelectorAll("[data-card-id]")].find(b=>b.dataset.cardId===focusId)?.focus({preventScroll:true});
+}
+async function loadKanban() {
+  if ($("app-view").hidden || $("view-kanban").hidden || getComputedStyle($("view-kanban")).display === "none") return;
+  const ticket = ++kanbanLoadSequence, login = meUser?.login;
+  try {
+    const result = await kanban("list");
+    if (ticket !== kanbanLoadSequence || login !== meUser?.login) return;
+    kanbanTasks = Array.isArray(result) ? result : (result.tasks || []);
+    fillAssignees($("card-assignee"),kanbanTasks.map(t=>t.assignee).filter(Boolean));
+    renderKanban();
+    $("kanban-status").textContent = "À jour · actualisation automatique toutes les 10 s";
+  } catch(err) {
+    if (ticket !== kanbanLoadSequence) return;
+    $("kanban-status").textContent = "Actualisation impossible : " + err.message + (kanbanTasks.length ? ". Dernières cartes conservées, elles peuvent être anciennes." : ". Réessayez depuis l'onglet Kanban.");
   }
 }
-for (const [id, scope] of [["scope-all", "all"], ["scope-mine", "mine"]]) {
-  $(id).addEventListener("click", () => {
-    kanbanScope = scope;
-    $("scope-all").className = "btn " + (scope === "all" ? "on" : "ghost");
-    $("scope-mine").className = "btn " + (scope === "mine" ? "on" : "ghost");
-    loadKanban();
-  });
+function fillAssignees(select, owners) {
+  const knownTeam = meUser?.team?.length ? meUser.team : owners;
+  const logins = [...new Set([meUser?.login,...knownTeam].filter(Boolean))];
+  const signature = JSON.stringify(logins);
+  if (select.dataset.signature === signature) return;
+  select.dataset.signature = signature;
+  const previous = select.value;
+  select.replaceChildren();
+  for (const login of logins) {
+    const o = node("option",login === meUser?.login ? login+" (moi)" : login); o.value = login; select.append(o);
+  }
+  if ([...select.options].some(o=>o.value===previous)) select.value=previous;
 }
+for (const scope of ["all","mine","unassigned"]) $("scope-"+scope).addEventListener("click",()=>setKanbanScope(scope));
+$("kanban-search").addEventListener("input",renderKanban);
+$("kanban-done").addEventListener("change",renderKanban);
+$("kanban-mode").addEventListener("change",renderKanban);
+$("kanban-reset").addEventListener("click",()=>{ $("kanban-search").value=""; $("kanban-done").checked=false; setKanbanScope("all"); });
 async function openCard(id) {
+  const ticket = ++cardOpenSequence; selectedCard = id;
   try {
     const result = await kanban("show?id=" + encodeURIComponent(id));
+    if (ticket !== cardOpenSequence) return;
     const task = result.task || result;
-    selectedCard = id;
+    $("block-form").hidden = true; $("block-reason").value = "";
     $("create-card").hidden = true; $("card-detail").hidden = false;
     $("card-title").textContent = task.title;
     $("detail-body").textContent = task.body || "Sans description.";
-    $("detail-meta").textContent = (COLUMNS.find(c => c[2].includes(task.status)) || [null,task.status])[1] + " · " + (task.assignee || "Non affectée");
+    const blocking = [...(result.events || [])].reverse().find(e=>e.kind === "blocked" && e.payload?.reason);
+    $("block-context").hidden = task.status !== "blocked" || !blocking;
+    $("block-context").textContent = blocking ? "Pour reprendre : " + blocking.payload.reason : "";
+    $("detail-meta").textContent = KanbanView.label(task.status) + " · " + (task.assignee || "Non affectée");
     $("comments").replaceChildren(...(result.comments || task.comments || []).map(c => node("p", (c.author || "Équipe") + " · " + (c.body || c.text || c.content || ""))));
     $("card-actions").replaceChildren();
     const canDecide = task.can_decide !== false;
@@ -456,18 +539,19 @@ async function openCard(id) {
       const claim = node("button", "Me l'affecter", "btn");
       claim.addEventListener("click", async () => {
         claim.disabled = true;
-        try { await kanban("assign", {id, assignee: meUser.login}); await openCard(id); await loadKanban(); }
+        try { await kanban("assign", {id, assignee: meUser.login}); if (selectedCard===id && $("card-dialog").open) await openCard(id); await loadKanban(); }
         catch(err) { $("card-error").textContent = err.message; }
         finally { claim.disabled = false; }
       });
       $("card-actions").append(claim);
     }
-    for(const [op, label] of canDecide ? [["complete","Terminer"],[task.status === "blocked" ? "unblock" : "block",task.status === "blocked" ? "Débloquer" : "Bloquer"],["archive","Archiver"]] : []) {
+    for(const [op, label] of canDecide ? [...(task.status === "done" ? [] : [["complete","Terminer"],...(task.status === "blocked" ? [["unblock","Débloquer"]] : ["ready","running"].includes(task.status) ? [["block","Bloquer"]] : [])]),["archive","Archiver"]] : []) {
       const b = node("button", label, "btn ghost");
       b.addEventListener("click", async () => {
+        if (op === "block") { $("block-form").hidden=false; $("block-reason").focus(); return; }
         b.disabled = true;
-        try { await kanban(op, {id, ...(op === "block" ? {text:"Bloquée depuis Agent Core"} : {})});
-          if(op === "archive") $("card-dialog").close(); else await openCard(id);
+        try { await kanban(op, {id});
+          if(op === "archive" && selectedCard===id) closeCard(); else if (selectedCard===id && $("card-dialog").open) await openCard(id);
           await loadKanban();
         } catch(err) { $("card-error").textContent = err.message; }
         finally { b.disabled = false; }
@@ -475,17 +559,27 @@ async function openCard(id) {
     }
     $("card-error").textContent = "";
     if(!$("card-dialog").open) $("card-dialog").showModal();
-  } catch(err) { $("kanban-status").textContent = err.message; }
+  } catch(err) { if (ticket===cardOpenSequence) $("kanban-status").textContent = err.message; }
 }
 $("new-card").addEventListener("click", () => {
   selectedCard = null; $("card-title").textContent = "Nouvelle carte";
   $("create-card").hidden = false; $("card-detail").hidden = true;
+  cardOpenSequence++; selectedCard=null;
   $("create-card").reset(); $("card-error").textContent = ""; $("card-dialog").showModal();
 });
-$("close-card").addEventListener("click", () => $("card-dialog").close());
+function closeCard() { cardOpenSequence++; selectedCard=null; $("card-dialog").close(); }
+$("close-card").addEventListener("click",closeCard);
+$("card-dialog").addEventListener("cancel",()=>{cardOpenSequence++;selectedCard=null;});
+$("cancel-block").addEventListener("click",()=>{$("block-form").hidden=true;});
+$("block-form").addEventListener("submit",async ev=>{
+  ev.preventDefault(); const reason=$("block-reason").value.trim(); if(!reason)return;
+  const id=selectedCard, btn=ev.submitter; btn.disabled=true;
+  try { await kanban("block",{id,text:reason}); if (selectedCard===id && $("card-dialog").open) await openCard(id); await loadKanban(); }
+  catch(err){$("card-error").textContent=err.message;} finally{btn.disabled=false;}
+});
 $("create-card").addEventListener("submit", async ev => {
   ev.preventDefault(); const btn = ev.submitter; btn.disabled = true;
-  try { await kanban("create", {title:$("card-name").value,body:$("card-body").value,assignee:$("card-assignee").value || undefined}); $("card-dialog").close(); await loadKanban(); }
+  try { await kanban("create", {title:$("card-name").value,body:$("card-body").value,assignee:$("card-assignee").value || undefined}); closeCard(); await loadKanban(); }
   catch(err) { $("card-error").textContent = err.message; }
   finally { btn.disabled = false; }
 });

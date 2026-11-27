@@ -268,7 +268,8 @@ def make_handler(app: App):
                     return self._json(401, {"error": "non connecté"})
                 me = {"login": user["login"], "name": user["display_name"],
                       "role": user["role"], "admin": user["role"] == "admin",
-                      "mail": app.mailer is not None}
+                      "mail": app.mailer is not None,
+                      "team": app.team_logins() if user["login"] in app.team_logins() else []}
                 if app.bridge_key and user["login"] in app.bridge_logins:
                     me["gona"] = True  # bouton de bascule vers GONA : jamais pour les autres comptes
                 return self._json(200, me)

@@ -1,0 +1,40 @@
+test_cleartext_disabled_and_local_ca_scoped (test_android_tls.AndroidTLS.test_cleartext_disabled_and_local_ca_scoped) ... ok
+test_no_tls_bypass (test_android_tls.AndroidTLS.test_no_tls_bypass) ... ok
+test_upgrade_same_package_and_explicit_version (test_android_tls.AndroidTLS.test_upgrade_same_package_and_explicit_version) ... ok
+test_creer_lire_modifier_et_droits (test_equipe.ClientsTest.test_creer_lire_modifier_et_droits) ... ok
+test_dossier_remplace_par_un_lien_entre_deux_appels (test_equipe.ClientsTest.test_dossier_remplace_par_un_lien_entre_deux_appels)
+Résolution par descripteurs : un dossier devenu lien symbolique est refusé à l'ouverture. ... ok
+test_fichier_d_un_collegue_modifiable_sans_etre_proprietaire (test_equipe.ClientsTest.test_fichier_d_un_collegue_modifiable_sans_etre_proprietaire)
+Un fichier existant n'est jamais chmodé : un collègue qui n'en est pas propriétaire peut le modifier. ... ok
+test_lien_physique_vers_un_fichier_prive_refuse_sans_changer_ses_droits (test_equipe.ClientsTest.test_lien_physique_vers_un_fichier_prive_refuse_sans_changer_ses_droits) ... ok
+test_liens_symboliques_refuses (test_equipe.ClientsTest.test_liens_symboliques_refuses) ... ok
+test_racine_lien_symbolique_refusee (test_equipe.ClientsTest.test_racine_lien_symbolique_refusee) ... ok
+test_taille_et_chemin_vide (test_equipe.ClientsTest.test_taille_et_chemin_vide) ... ok
+test_traversees_refusees (test_equipe.ClientsTest.test_traversees_refusees) ... ok
+test_ecriture_explicite_vers_la_banque_d_equipe (test_equipe.MemoireEquipeTest.test_ecriture_explicite_vers_la_banque_d_equipe) ... ok
+test_non_configure (test_equipe.MemoireEquipeTest.test_non_configure) ... ok
+test_rappel_avec_auteur_et_source (test_equipe.MemoireEquipeTest.test_rappel_avec_auteur_et_source) ... ok
+test_source_obligatoire_et_refus_du_portier_remonte (test_equipe.MemoireEquipeTest.test_source_obligatoire_et_refus_du_portier_remonte) ... /home/thibaud/.hermes/tools/python-3.14.9+20261021-linux-x64/lib/python3.14/tempfile.py:538: ResourceWarning: Implicitly cleaning up <HTTPError 422: 'Unprocessable Content'>
+  _warnings.warn(self.warn_message, ResourceWarning)
+ok
+test_javascript_filter_order_and_labels (test_kanban_presentation.KanbanPresentationTest.test_javascript_filter_order_and_labels) ... ok
+test_simulator_persists_human_owner_and_block_reason (test_kanban_presentation.KanbanPresentationTest.test_simulator_persists_human_owner_and_block_reason) ... ok
+test_aucun_outil_d_envoi (test_mail_perso.MailPersoTest.test_aucun_outil_d_envoi) ... ok
+test_brouillon_uniquement_dans_sa_boite (test_mail_perso.MailPersoTest.test_brouillon_uniquement_dans_sa_boite) ... ok
+test_entrees_invalides_refusees (test_mail_perso.MailPersoTest.test_entrees_invalides_refusees) ... ok
+test_lecture_limitee_a_sa_boite (test_mail_perso.MailPersoTest.test_lecture_limitee_a_sa_boite) ... ok
+test_pas_de_boite_pas_d_acces (test_mail_perso.MailPersoTest.test_pas_de_boite_pas_d_acces) ... ok
+test_compte_invalide_refuse (test_migration_kanban.MigrationTest.test_compte_invalide_refuse) ... ok
+test_echec_de_statut_pas_de_marqueur (test_migration_kanban.MigrationTest.test_echec_de_statut_pas_de_marqueur) ... ok
+test_lecture_sqlite_en_lecture_seule (test_migration_kanban.MigrationTest.test_lecture_sqlite_en_lecture_seule) ... ok
+test_marqueur_empeche_la_resurrection_d_une_carte_archivee (test_migration_kanban.MigrationTest.test_marqueur_empeche_la_resurrection_d_une_carte_archivee) ... ok
+test_reprise_complete_puis_rejeu_sans_doublon (test_migration_kanban.MigrationTest.test_reprise_complete_puis_rejeu_sans_doublon) ... ok
+test_1_refus_sans_session (test_poste_local.PosteLocal.test_1_refus_sans_session) ... ok
+test_2_relance_jusqu_a_approbation (test_poste_local.PosteLocal.test_2_relance_jusqu_a_approbation) ... ok
+test_3_kanban (test_poste_local.PosteLocal.test_3_kanban) ... ok
+test_4_secrets_hors_depot_et_proteges (test_poste_local.PosteLocal.test_4_secrets_hors_depot_et_proteges) ... ok
+
+----------------------------------------------------------------------
+Ran 31 tests in 4.761s
+
+OK
