@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">10.68.100.1</domain>
+        <domain includeSubdomains="false">192.168.68.240</domain>
+        <trust-anchors>
+            <certificates src="@raw/arpagona_local_ca" />
+        </trust-anchors>
+    </domain-config>
+</network-security-config>
