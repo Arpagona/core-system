@@ -17,6 +17,8 @@ const KanbanView = (() => {
     const rank = {blocked:0,review:1,running:2,ready:3,triage:4,todo:4,scheduled:5,done:6};
     return [...tasks].sort((a,b) => (Number(b.priority)||0)-(Number(a.priority)||0) || (rank[a.status]??7)-(rank[b.status]??7));
   }
-  return {filter,order,fold,label:status=>labels[status] || status || "État inconnu"};
+  // Un client déjà ouvert doit se recharger quand l'interface déployée change.
+  const reloadNeeded = (loaded, current) => Boolean(loaded && current && loaded !== current);
+  return {filter,order,fold,reloadNeeded,label:status=>labels[status] || status || "État inconnu"};
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = KanbanView;

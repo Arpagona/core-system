@@ -1,6 +1,7 @@
 """API ARPAGONA : seule surface exposée au navigateur. Relaie le chat vers Hermès en boucle locale."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -33,6 +34,36 @@ COMMANDS_HELP = ("Commandes : /new ouvre une nouvelle conversation (l'agent repa
                  "/status affiche l'état du compte, du moteur et des engagements ; /help affiche cette aide.")
 LOGIN_MAX_FAILS = 5
 LOGIN_LOCK_S = 60
+# Fichiers d'interface dont l'empreinte décide du rechargement des clients déjà ouverts.
+UI_FILES = ("index.html", "app.js", "kanban-view.js", "style.css")
+_UI_STAMP: dict[str, object] = {"key": None, "value": ""}
+
+
+def ui_version(static_dir: Path) -> str:
+    """Empreinte courte des fichiers d'interface servis.
+
+    Un client déjà ouvert compare cette valeur : elle change dès qu'un déploiement
+    modifie l'interface, sans redémarrage ni cache navigateur à vider.
+    Le calcul est mis en cache sur (chemin, date, taille) pour rester gratuit.
+    """
+    stamps = []
+    for name in UI_FILES:
+        try:
+            info = (static_dir / name).stat()
+            stamps.append((name, info.st_mtime_ns, info.st_size))
+        except OSError:
+            stamps.append((name, 0, 0))
+    key = (str(static_dir), tuple(stamps))
+    if _UI_STAMP["key"] != key:
+        digest = hashlib.sha256()
+        for name in UI_FILES:
+            digest.update(name.encode())
+            try:
+                digest.update((static_dir / name).read_bytes())
+            except OSError:
+                digest.update(b"absent")
+        _UI_STAMP.update(key=key, value=digest.hexdigest()[:12])
+    return str(_UI_STAMP["value"])
 
 
 class App:
@@ -261,7 +292,7 @@ def make_handler(app: App):
         def do_GET(self):
             path = self.path.split("?", 1)[0]
             if path == "/api/health":
-                return self._json(200, {"status": "ok"})
+                return self._json(200, {"status": "ok", "ui": ui_version(app.static_dir)})
             if path == "/api/me":
                 user = self._user()
                 if not user:

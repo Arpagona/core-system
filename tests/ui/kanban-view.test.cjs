@@ -20,3 +20,11 @@ test('ne modifie pas les cartes reçues',()=>{const snapshot=JSON.stringify(card
 test('état inconnu conservé et étiqueté honnêtement',()=>{const tasks=[{status:'custom',title:'x'}];assert.equal(view.filter(tasks).length,1);assert.equal(view.label('custom'),'custom');});
 test('liste ordonnée par priorité puis attention, tri stable',()=>{const tasks=[{id:'a',status:'ready'},{id:'b',status:'blocked'},{id:'c',status:'todo',priority:9},{id:'d',status:'review'},{id:'e',status:'ready'}];assert.deepEqual(view.order(tasks).map(t=>t.id),['c','b','d','a','e']);});
 test('les planifiées ne sont pas étiquetées bloquées',()=>{assert.equal(view.label('scheduled'),'Planifiée');assert.equal(view.label('blocked'),'Bloquée');});
+
+test("rechargement seulement quand la version déployée change",()=>{
+  assert.equal(view.reloadNeeded(null,"abc"),false,"premier contact : ne pas recharger");
+  assert.equal(view.reloadNeeded("abc","abc"),false,"même version : rester");
+  assert.equal(view.reloadNeeded("abc","def"),true,"nouvelle version : recharger");
+  assert.equal(view.reloadNeeded("abc",""),false,"réponse sans version : rester");
+  assert.equal(view.reloadNeeded("","abc"),false,"version inconnue : ne pas boucler");
+});

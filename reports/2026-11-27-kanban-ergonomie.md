@@ -53,6 +53,17 @@ Fidélité renforcée de la CLI simulée, alignée sur le noyau natif : blocage 
 
 Résultats cumulés : API **99 OK**, développement **31 OK**, JavaScript **13 OK**, navigateur **21 + 11 scénarios OK**, mutations **8/8 détectées**.
 
+## Vérification sur les appareils réels
+
+| Cible | Constat |
+| --- | --- |
+| Atlas (VM 100, HTTPS) | Release `db6c69be…` active, `/api/health` 200, page et modules servis, interface Kanban exécutée dans la page déployée, `team` et motif de blocage relus depuis la vraie CLI |
+| Retour arrière | Testé dans les deux sens : retour à `13045c6…` (santé 200, nouvelle interface absente), puis redéploiement (santé 200, interface présente) |
+| iMac (Ubuntu, Firefox) | Rejoint Atlas en HTTPS sans option (`200`), CA du banc déjà présent dans le magasin système et dans le profil Firefox, mêmes octets servis |
+| Émulateur Android 35 (1080×2400) | Application `0.11-TLS` ouverte sur `https://10.68.100.1:8700/` via WireGuard, écran connecté réel |
+
+**Défaut trouvé sur l’appareil** : l’application Android ouverte avant le déploiement continuait d’afficher l’ancienne interface (`kanban-view.js` absent, `KanbanView is not defined`) parce que la page restait en mémoire. Le service worker ne mettait rien en cache : le défaut venait de l’absence de contrôle de version. Corrigé par l’empreinte `ui` de `/api/health` et le rechargement automatique au retour au premier plan. Couvert par un test de bout en bout (fichier d’interface modifié à chaud, page rechargée) et par une mutation dédiée.
+
 ## État du chantier
 
 Travail commité sur la branche, PR en brouillon, CI verte sur le commit exact. **Aucune fusion ni déploiement au moment de cette rédaction** : la suite de ce document couvre la mise en service.
