@@ -1,5 +1,5 @@
 {
-  "recorded_at": "2026-11-27T14:49:06.072829+00:00",
+  "recorded_at": "2026-11-27T14:54:06.954265+00:00",
   "issue": "https://github.com/Arpagona/core-system/issues/78",
   "browser": {
     "principale": {
@@ -116,13 +116,14 @@
   "devices": {
     "atlas_https": "200, interface exécutée dans la page déployée",
     "rollback": "testé dans les deux sens",
-    "imac": "CA du banc présent, HTTPS 200, mêmes octets servis",
-    "android": "émulateur API 35, application 0.11-TLS connectée via WireGuard"
+    "imac": "CA du banc présent (système et profil Firefox), HTTPS 200, mêmes octets servis, page ouverte ; rendu visuel non capturé (capture d’écran refusée sur session GNOME Wayland)",
+    "android": "émulateur API 35, application 0.11-TLS connectée via WireGuard ; empreinte ui mémorisée 83a71b2697be ; rechargement automatique déclenché et observé dans la page réelle"
   },
   "not_proven": [
     "téléphone physique hors émulateur",
     "moteur Hermès réel sur le banc local",
-    "isolation entre instances réelles"
+    "isolation entre instances réelles",
+    "rendu visuel sur l’iMac (capture d’écran indisponible)"
   ],
   "screenshots": [
     "2026-11-27-kanban-desktop.png",

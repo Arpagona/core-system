@@ -64,6 +64,12 @@ Résultats cumulés : API **99 OK**, développement **31 OK**, JavaScript **13 O
 
 **Défaut trouvé sur l’appareil** : l’application Android ouverte avant le déploiement continuait d’afficher l’ancienne interface (`kanban-view.js` absent, `KanbanView is not defined`) parce que la page restait en mémoire. Le service worker ne mettait rien en cache : le défaut venait de l’absence de contrôle de version. Corrigé par l’empreinte `ui` de `/api/health` et le rechargement automatique au retour au premier plan. Couvert par un test de bout en bout (fichier d’interface modifié à chaud, page rechargée) et par une mutation dédiée.
 
+### Résultat de la vérification après ce correctif
+
+- **Android (émulateur API 35)** : après déploiement, l’application a été rechargée puis contrôlée sur `https://10.68.100.1:8700/` : empreinte mémorisée `83a71b2697be`, champ de recherche, filtres d’équipe, mode Tableau/Liste et module `KanbanView` actifs. Le chemin de rechargement a ensuite été déclenché dans la page réelle : la page s’est rechargée seule et a repris l’empreinte courante. La capture est dans `reports/proofs/2026-11-27-kanban-android.png`.
+- **iMac** : rejoint Atlas en HTTPS sans option de confiance (`200`), CA du banc présent dans le magasin système **et** dans le profil Firefox, mêmes octets servis, page ouverte dans Firefox. **Rendu visuel non capturé** : sur cette session GNOME Wayland, `grim` et `gnome-screenshot` sont refusés à un processus hors session, et le service d’automatisation aperçu a perdu sa session. À confirmer d’un coup d’œil sur l’écran de l’iMac, où l’onglet est ouvert.
+
+
 ## État du chantier
 
 Travail commité sur la branche, PR en brouillon, CI verte sur le commit exact. **Aucune fusion ni déploiement au moment de cette rédaction** : la suite de ce document couvre la mise en service.
