@@ -8,11 +8,14 @@ import sqlite3
 import threading
 import time
 
+from .engagements import fingerprint
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,
     login TEXT NOT NULL UNIQUE,
     display_name TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'membre' CHECK (role IN ('admin', 'membre')),
     pw_salt BLOB NOT NULL,
     pw_hash BLOB NOT NULL,
     created_at REAL NOT NULL
@@ -72,6 +75,20 @@ CREATE TABLE IF NOT EXISTS drafts (
     created_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS engagements_due ON engagements(status, due_at);
+CREATE TABLE IF NOT EXISTS missions (
+    id INTEGER PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id),
+    run_id TEXT,
+    title TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('en_cours', 'terminee', 'echouee', 'arretee')),
+    created_at REAL NOT NULL,
+    ended_at REAL,
+    cost_usd REAL,
+    result TEXT,
+    stop_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS missions_user ON missions(user_id, created_at);
 CREATE TABLE IF NOT EXISTS audit (
     id INTEGER PRIMARY KEY,
     ts REAL NOT NULL,
@@ -122,6 +139,15 @@ class Store:
         for name, kind in (("closed_reason", "TEXT"), ("parent_id", "INTEGER REFERENCES conversations(id)")):
             if name not in cols:
                 self._db.execute(f"ALTER TABLE conversations ADD COLUMN {name} {kind}")
+        # Rôles : bases antérieures sans colonne. Le plus ancien compte devient admin
+        # pour qu'une instance existante ne se retrouve pas sans administrateur.
+        user_cols = {r["name"] for r in self._db.execute("PRAGMA table_info(users)")}
+        if "role" not in user_cols:
+            self._db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'membre'")
+        if not self._db.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone():
+            oldest = self._db.execute("SELECT id FROM users ORDER BY id LIMIT 1").fetchone()
+            if oldest:
+                self._db.execute("UPDATE users SET role = 'admin' WHERE id = ?", (oldest["id"],))
 
     def _migrate_legacy(self) -> None:
         self._db.execute("PRAGMA foreign_keys=OFF")
@@ -160,15 +186,36 @@ class Store:
         return rows[0] if rows else None
 
     # --- utilisateurs -----------------------------------------------------
-    def add_user(self, login: str, display_name: str, password: str) -> int:
+    def add_user(self, login: str, display_name: str, password: str, role: str = "membre") -> int:
         if len(password) < 12:
             raise ValueError("mot de passe trop court (12 caractères minimum)")
+        if role not in ("admin", "membre"):
+            raise ValueError("rôle invalide")
+        # Le tout premier compte d'une instance est administrateur : sinon personne ne peut gérer.
+        if not self._one("SELECT 1 FROM users LIMIT 1"):
+            role = "admin"
         salt = secrets.token_bytes(16)
         cur = self._run(
-            "INSERT INTO users(login, display_name, pw_salt, pw_hash, created_at) VALUES (?,?,?,?,?)",
-            (login, display_name, salt, _hash_password(password, salt), time.time()),
+            "INSERT INTO users(login, display_name, role, pw_salt, pw_hash, created_at) VALUES (?,?,?,?,?,?)",
+            (login, display_name, role, salt, _hash_password(password, salt), time.time()),
         )
         return int(cur.lastrowid or 0)
+
+    def set_role(self, login: str, role: str) -> bool:
+        if role not in ("admin", "membre"):
+            raise ValueError("rôle invalide")
+        with self._lock:
+            row = self._db.execute("SELECT id FROM users WHERE login = ?", (login,)).fetchone()
+            if not row:
+                return False
+            if role == "membre":
+                # Ne jamais laisser une instance sans administrateur.
+                admins = self._db.execute("SELECT COUNT(*) AS n FROM users WHERE role = 'admin'").fetchone()["n"]
+                if admins <= 1 and self._db.execute(
+                        "SELECT role FROM users WHERE id = ?", (row["id"],)).fetchone()["role"] == "admin":
+                    raise ValueError("dernier administrateur : nommer un autre admin d'abord")
+            self._db.execute("UPDATE users SET role = ? WHERE id = ?", (role, row["id"]))
+        return True
 
     def set_password(self, login: str, password: str) -> bool:
         """Remplace le mot de passe et ferme les sessions ouvertes du compte."""
@@ -200,6 +247,7 @@ class Store:
             self._db.execute("BEGIN")
             try:
                 self._db.execute("DELETE FROM drafts WHERE user_id = ?", (uid,))
+                self._db.execute("DELETE FROM missions WHERE user_id = ?", (uid,))
                 self._db.execute("DELETE FROM engagements WHERE user_id = ?", (uid,))
                 self._db.execute("DELETE FROM messages WHERE conversation_id IN"
                                  " (SELECT id FROM conversations WHERE user_id = ?)", (uid,))
@@ -418,9 +466,122 @@ class Store:
                 self._db.execute("UPDATE engagements SET status = ? WHERE id = ?",
                                  ("envoye" if ok else "echec", row["engagement_id"]))
 
+    # --- envoi courriel ---------------------------------------------------
+    def claim_send(self, draft_id: int, user_id: int, expected_fingerprint: str,
+                   is_admin: bool = False) -> tuple[str, sqlite3.Row | None]:
+        """Réserve un brouillon approuvé pour envoi unique, après re-calcul de l'empreinte.
+
+        Renvoie (code, ligne). Codes : ok, inconnu, non_approuve, interdit, contenu_modifie, deja_en_cours.
+        """
+        with self._lock:
+            row = self._db.execute("SELECT * FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            if not row:
+                return "inconnu", None
+            if row["user_id"] != user_id and not is_admin:
+                return "interdit", None
+            if row["status"] == "envoye" or (row["delivery"] or "").startswith("envoi_en_cours"):
+                return "deja_en_cours", row
+            if row["status"] != "approuve":
+                return "non_approuve", row
+            recomputed = fingerprint(row["target"], row["body"])
+            if not hmac.compare_digest(recomputed, row["fingerprint"]):
+                return "contenu_modifie", row
+            if not hmac.compare_digest(row["fingerprint"], expected_fingerprint or ""):
+                return "contenu_modifie", row
+            self._db.execute("UPDATE drafts SET delivery = ? WHERE id = ?",
+                             ("envoi_en_cours", draft_id))
+            return "ok", row
+
+    def mark_sent(self, draft_id: int, message_id: str) -> None:
+        with self._lock:
+            row = self._db.execute("SELECT engagement_id FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            self._db.execute("UPDATE drafts SET status = 'envoye', delivery = ? WHERE id = ?",
+                             (f"envoyé {message_id}"[:200], draft_id))
+            if row:
+                self._db.execute("UPDATE engagements SET status = 'envoye' WHERE id = ?", (row["engagement_id"],))
+
+    def mark_send_failed(self, draft_id: int, reason: str) -> None:
+        with self._lock:
+            row = self._db.execute("SELECT engagement_id FROM drafts WHERE id = ?", (draft_id,)).fetchone()
+            self._db.execute("UPDATE drafts SET status = 'echec', delivery = ? WHERE id = ?",
+                             (f"échec : {reason}"[:200], draft_id))
+            if row:
+                self._db.execute("UPDATE engagements SET status = 'echec' WHERE id = ?", (row["engagement_id"],))
+
+    # --- missions ---------------------------------------------------------
+    def start_mission(self, user_id: int, conversation_id: int, run_id: str, title: str) -> int:
+        cur = self._run(
+            "INSERT INTO missions(user_id, conversation_id, run_id, title, status, created_at)"
+            " VALUES (?,?,?,?,'en_cours',?)",
+            (user_id, conversation_id, run_id, title[:120], time.time()),
+        )
+        return int(cur.lastrowid or 0)
+
+    def mission(self, mission_id: int) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM missions WHERE id = ?", (mission_id,))
+
+    def mission_for_run(self, run_id: str) -> sqlite3.Row | None:
+        return self._one("SELECT * FROM missions WHERE run_id = ?", (run_id,))
+
+    def missions(self, user_id: int, limit: int = 50, active_only: bool = False) -> list[sqlite3.Row]:
+        sql = "SELECT * FROM missions WHERE user_id = ?"
+        if active_only:
+            sql += " AND status = 'en_cours'"
+        return self._all(sql + " ORDER BY id DESC LIMIT ?", (user_id, int(limit)))
+
+    def finish_mission(self, mission_id: int, status: str, result: str = "",
+                       cost_usd: float | None = None, stop_reason: str | None = None) -> None:
+        if status not in ("terminee", "echouee", "arretee"):
+            raise ValueError("statut de mission invalide")
+        self._run("UPDATE missions SET status = ?, ended_at = ?, result = ?, cost_usd = ?,"
+                  " stop_reason = COALESCE(?, stop_reason) WHERE id = ? AND status = 'en_cours'",
+                  (status, time.time(), (result or "")[:20000], cost_usd, stop_reason, mission_id))
+
+    def request_stop(self, mission_id: int, user_id: int, is_admin: bool = False) -> str:
+        with self._lock:
+            row = self._db.execute("SELECT * FROM missions WHERE id = ?", (mission_id,)).fetchone()
+            if not row:
+                return "inconnu"
+            if row["user_id"] != user_id and not is_admin:
+                return "interdit"
+            if row["status"] != "en_cours":
+                return "deja_terminee"
+            self._db.execute("UPDATE missions SET stop_reason = 'demande' WHERE id = ?", (mission_id,))
+            return "ok"
+
+    def cost_since(self, since: float) -> float:
+        row = self._one("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM missions WHERE created_at >= ?", (since,))
+        return float(row["total"] or 0.0) if row else 0.0
+
+    # --- journal ----------------------------------------------------------
     def audit(self, user_id: int | None, action: str, detail: str = "") -> None:
         self._run("INSERT INTO audit(ts, user_id, action, detail) VALUES (?,?,?,?)",
                   (time.time(), user_id, action, detail[:500]))
 
-    def audit_rows(self) -> list[sqlite3.Row]:
-        return self._all("SELECT * FROM audit ORDER BY id")
+    def audit_rows(self, limit: int = 200, user_id: int | None = None) -> list[sqlite3.Row]:
+        """Les N événements les plus récents, rendus dans l'ordre chronologique."""
+        limit = max(1, min(int(limit), 1000))
+        if user_id is None:
+            return self._all("SELECT * FROM (SELECT * FROM audit ORDER BY id DESC LIMIT ?) ORDER BY id",
+                             (limit,))
+        return self._all("SELECT * FROM (SELECT * FROM audit WHERE user_id = ? ORDER BY id DESC LIMIT ?)"
+                         " ORDER BY id", (user_id, limit))
+
+    def export_data(self, user_id: int | None = None) -> dict:
+        """Export métier : aucune donnée d'authentification (ni sel, ni empreinte, ni session)."""
+        def rows(sql: str, args: tuple = ()) -> list[dict]:
+            return [dict(r) for r in self._all(sql, args)]
+        scope = "" if user_id is None else " WHERE user_id = ?"
+        args: tuple = () if user_id is None else (user_id,)
+        data = {"format": "arpagona-export-1", "exported_at": time.time()}
+        data["users"] = [{k: r[k] for k in ("login", "display_name", "role", "created_at")}
+                         for r in rows("SELECT * FROM users" + ("" if user_id is None else " WHERE id = ?"), args)]
+        data["conversations"] = rows("SELECT * FROM conversations" + scope, args)
+        data["messages"] = rows(
+            "SELECT m.* FROM messages m JOIN conversations c ON c.id = m.conversation_id"
+            + ("" if user_id is None else " WHERE c.user_id = ?") + " ORDER BY m.id", args)
+        data["engagements"] = rows("SELECT * FROM engagements" + scope + " ORDER BY id", args)
+        data["drafts"] = rows("SELECT * FROM drafts" + scope + " ORDER BY id", args)
+        data["missions"] = rows("SELECT * FROM missions" + scope + " ORDER BY id", args)
+        data["audit"] = rows("SELECT * FROM audit" + scope + " ORDER BY id", args)
+        return data

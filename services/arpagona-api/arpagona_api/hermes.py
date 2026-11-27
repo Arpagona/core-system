@@ -55,6 +55,14 @@ class HermesClient:
         with self._request("GET", f"/v1/runs/{run_id}") as resp:
             return json.loads(resp.read())
 
+    def stop(self, run_id: str) -> bool:
+        """Demande l'arrêt d'une exécution. Vrai si le moteur a accepté la demande."""
+        try:
+            with self._request("POST", f"/v1/runs/{run_id}/stop", {}) as resp:
+                return 200 <= resp.status < 300
+        except HermesError:
+            return False
+
     def events(self, run_id: str) -> Iterator[dict]:
         """Événements SSE d'une exécution, jusqu'à la fermeture du flux par le moteur."""
         try:

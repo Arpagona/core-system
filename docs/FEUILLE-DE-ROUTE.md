@@ -10,8 +10,10 @@ Une surcouche d'Hermès Agent officiel (ADR 0007) qui donne à une PME un copilo
 
 | Brique | État | Preuve |
 |---|---|---|
-| Mission Control web (chat, Kanban, approbations, engagements) | fonctionne | recette navigateur LAN 19/11 ; parcours local 22/11 |
-| API ARPAGONA (comptes, sessions, engagements, brouillons, empreinte, audit) | fonctionne | 31 tests unitaires |
+| Mission Control web (chat, missions, Kanban, approbations, engagements, journal) | fonctionne | tests API 83 ; parcours local 26 ; recette navigateur à rejouer après déploiement |
+| API ARPAGONA (comptes, rôles, sessions, missions, engagements, brouillons, envoi, empreinte, audit, export) | fonctionne | 83 tests unitaires |
+| Envoi courriel après approbation | codé et testé, **non prouvé en réel** | faux SMTP vert ; remise réelle à faire sur le banc |
+| Plafonds de dépense (mission et jour) | fonctionne | tests : dépassement signalé, mission suivante refusée |
 | Passerelle Kanban (liste blanche sur `hermes kanban`) | fonctionne | 7 tests + parcours local |
 | Plugin `arpagona-core` (3 outils, aucun envoi) | fonctionne | recette banc 12/11 ; parcours local 22/11 |
 | Poste développeur en une commande | fonctionne | `tests/dev`, Python 3.10 à 3.14 |
@@ -22,9 +24,10 @@ Une surcouche d'Hermès Agent officiel (ADR 0007) qui donne à une PME un copilo
 
 - Banc de test. Aucune donnée client réelle.
 - HTTP sur le réseau local, cookie non `Secure`. HTTPS obligatoire avant tout client.
-- Aucun envoi : un brouillon approuvé se copie à la main.
+- L'envoi courriel n'est pas encore prouvé en conditions réelles (SMTP à configurer).
 - Une seule instance existe. L'isolation entre deux clients n'est pas démontrée.
-- Pas de plafond de dépense côté Hermès : limite chez le fournisseur du modèle.
+- Sauvegarde/restauration de l'instance non testées.
+- Le plafond de dépense n'interrompt pas une exécution déjà lancée ; il bloque la suivante.
 
 ## Lots proposés
 

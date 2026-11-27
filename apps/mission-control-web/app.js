@@ -3,8 +3,10 @@ const $ = (id) => document.getElementById(id);
 const HEADERS = { "Content-Type": "application/json", "X-Arpagona": "1" };
 let busy = false;
 const LIBELLES = { planifie: "Planifié", en_preparation: "Brouillon en préparation", pret: "Prêt",
-  en_attente: "À valider", approuve: "Approuvé · non envoyé", refuse: "Refusé", envoye: "Envoyé",
+  en_attente: "À valider", approuve: "Approuvé · prêt à envoyer", refuse: "Refusé", envoye: "Envoyé",
   echec: "Échec", annule: "Annulé" };
+const MISSION = { en_cours: "En cours", terminee: "Terminée", echouee: "Échouée", arretee: "Arrêtée" };
+const ARRET = { demande: "arrêt demandé", depassement_plafond: "plafond dépassé", arret_moteur: "arrêté par le moteur" };
 const CERTITUDES = { certain: "certaine", probable: "probable", a_confirmer: "à confirmer" };
 const libelle = (code) => LIBELLES[code] || code;
 
@@ -221,6 +223,24 @@ async function loadDrafts() {
           const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); copy.textContent = "Texte sélectionné : Ctrl+C"; }
       });
       actions.append(copy);
+      if (meUser && meUser.mail) {
+        const mail = document.createElement("button");
+        mail.className = "btn"; mail.textContent = "Envoyer par courriel";
+        mail.addEventListener("click", async () => {
+          if (!confirm("Envoyer ce texte exact à " + d.cible + " ?\n\nL'envoi est définitif.")) return;
+          mail.disabled = true;
+          const r = await fetch("/api/drafts/send", { method: "POST", headers: HEADERS,
+            body: JSON.stringify({ id: d.id, empreinte: d.empreinte }) }).catch(() => null);
+          if (!r || r.status !== 200) {
+            const err = r ? await r.json().catch(() => ({})) : {};
+            $("chat-status").textContent = err.error || "Envoi impossible.";
+          }
+          loadDrafts();
+        });
+        actions.append(mail);
+      } else {
+        actions.append(node("span", "Envoi non configuré sur cette instance.", "hint"));
+      }
       card.append(actions);
     }
     box.append(card);
@@ -244,6 +264,107 @@ async function refreshBadge() {
 }
 setInterval(refreshBadge, 10000);
 
+function duree(a, b) {
+  if (!b) return "";
+  const s = Math.max(0, Math.round(b - a));
+  return s < 60 ? s + " s" : Math.round(s / 60) + " min";
+}
+async function loadMissions() {
+  const res = await fetch("/api/missions");
+  if (res.status !== 200) return;
+  const data = await res.json();
+  $("budget").textContent = "Dépensé sur 24 h : " + Number(data.depense_24h || 0).toFixed(3) +
+    " $ · plafond jour " + data.plafond_jour + " $ · plafond mission " + data.plafond_mission + " $.";
+  const box = $("missions-list");
+  box.replaceChildren();
+  if (!data.missions.length) {
+    box.textContent = "Aucune mission pour l'instant. Chaque demande envoyée dans Conversation devient une mission suivie ici.";
+    return;
+  }
+  const df = new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" });
+  for (const m of data.missions) {
+    const card = document.createElement("article"); card.className = "card";
+    const h = document.createElement("h3"); h.textContent = m.titre;
+    const meta = document.createElement("p"); meta.className = "meta";
+    const tag = document.createElement("span");
+    tag.className = "tag" + (m.statut === "en_cours" ? " wait" : (m.statut === "echouee" ? " bad" : ""));
+    tag.textContent = MISSION[m.statut] || m.statut;
+    meta.append(tag, " " + df.format(new Date(m.debut * 1000)));
+    const d = duree(m.debut, m.fin); if (d) meta.append(" · " + d);
+    if (m.cout !== null && m.cout !== undefined) meta.append(" · " + Number(m.cout).toFixed(4) + " $");
+    if (m.arret && ARRET[m.arret]) meta.append(" · " + ARRET[m.arret]);
+    card.append(h, meta);
+    if (m.resultat) { const pre = document.createElement("pre"); pre.textContent = m.resultat; card.append(pre); }
+    if (m.statut === "en_cours") {
+      const actions = document.createElement("div"); actions.className = "actions";
+      const stop = document.createElement("button"); stop.className = "btn ghost"; stop.textContent = "Arrêter";
+      stop.addEventListener("click", async () => {
+        stop.disabled = true;
+        const r = await fetch("/api/missions/stop", { method: "POST", headers: HEADERS,
+          body: JSON.stringify({ id: m.id }) }).catch(() => null);
+        if (!r || r.status !== 200) {
+          const err = r ? await r.json().catch(() => ({})) : {};
+          $("budget").textContent = err.error || "Arrêt impossible.";
+        }
+        loadMissions();
+      });
+      actions.append(stop); card.append(actions);
+    }
+    box.append(card);
+  }
+}
+setInterval(() => { if (!$("view-missions").hidden) loadMissions(); }, 5000);
+
+async function loadAudit() {
+  const res = await fetch("/api/audit?limit=200");
+  if (res.status !== 200) return;
+  const data = await res.json();
+  const box = $("audit-list");
+  box.replaceChildren();
+  if (!data.evenements.length) { box.textContent = "Journal vide."; return; }
+  const df = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "medium" });
+  const list = document.createElement("div"); list.className = "cards";
+  for (const e of [...data.evenements].reverse()) {
+    const row = document.createElement("p"); row.className = "meta";
+    row.textContent = df.format(new Date(e.quand * 1000)) + " · " + e.action.replaceAll("_", " ") +
+      (e.detail ? " · " + e.detail : "");
+    list.append(row);
+  }
+  box.append(list);
+}
+
+// Voix : dictée par le navigateur (Chrome peut traiter l'audio sur son service), lecture locale.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if (SR) {
+  const mic = $("mic"); mic.hidden = false;
+  let rec = null;
+  mic.addEventListener("click", () => {
+    if (rec) { rec.stop(); return; }
+    rec = new SR(); rec.lang = "fr-FR"; rec.interimResults = true; rec.continuous = false;
+    const base = $("text").value;
+    rec.onresult = (ev) => {
+      let t = "";
+      for (const r of ev.results) t += r[0].transcript;
+      $("text").value = (base ? base + " " : "") + t;
+    };
+    rec.onend = () => { mic.setAttribute("aria-pressed", "false"); rec = null; };
+    mic.setAttribute("aria-pressed", "true");
+    try { rec.start(); } catch (err) { mic.hidden = true; }
+  });
+}
+if ("speechSynthesis" in window) {
+  const sp = $("speak"); sp.hidden = false;
+  sp.addEventListener("click", () => {
+    const msgs = document.querySelectorAll("#log .msg.assistant");
+    const last = msgs[msgs.length - 1];
+    if (!last) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(last.textContent);
+    u.lang = "fr-FR";
+    speechSynthesis.speak(u);
+  });
+}
+
 for (const tab of document.querySelectorAll(".tab")) {
   tab.addEventListener("click", () => {
     document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t === tab));
@@ -252,9 +373,13 @@ for (const tab of document.querySelectorAll(".tab")) {
     $("view-chat").hidden = !["chat", "kanban"].includes(view);
     $("view-engagements").hidden = view !== "engagements";
     $("view-drafts").hidden = view !== "drafts";
+    $("view-missions").hidden = view !== "missions";
+    $("view-audit").hidden = view !== "audit";
     if (view === "engagements") loadEngagements();
     if (view === "drafts") loadDrafts();
     if (view === "kanban") loadKanban();
+    if (view === "missions") loadMissions();
+    if (view === "audit") loadAudit();
   });
 }
 

@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 
 from .engagements import InvalidEngagement, fingerprint, parse_due, validate_fields
 from .hermes import TERMINAL, HermesClient, HermesError
+from .mailer import MailError, Mailer
 from .store import SESSION_TTL_S, Store
 from .kanban import KanbanClient
 from .agents import AgentRegistry
@@ -37,7 +38,8 @@ LOGIN_LOCK_S = 60
 class App:
     def __init__(self, store: Store, hermes: HermesClient, static_dir: Path, cookie_secure: bool,
                  service_token: str = "", session_idle_minutes: int = 240, session_daily_hour: int = 4,
-                 now=time.time):
+                 now=time.time, max_mission_usd: float = 0.50, max_day_usd: float = 5.00,
+                 mailer: Mailer | None = None):
         self.store = store
         self.hermes = hermes
         self.static_dir = static_dir.resolve()
@@ -48,6 +50,9 @@ class App:
         self.session_idle_minutes = session_idle_minutes
         self.session_daily_hour = session_daily_hour
         self.now = now
+        self.max_mission_usd = max(0.0, float(max_mission_usd))
+        self.max_day_usd = max(0.0, float(max_day_usd))
+        self.mailer = mailer
         # Pont vers un second Mission Control (GONA) : clé + comptes autorisés. Vide = pont désactivé.
         self.bridge_key: bytes = b""
         self.bridge_logins: set[str] = set()
@@ -133,20 +138,49 @@ class App:
         return self.agents.logins() if self.agents is not None else []
 
     # --- messages en attente ----------------------------------------------
-    def settle_from_engine(self, message_id: int, run_id: str | None, hermes: HermesClient | None = None) -> None:
-        """Arrête l'état d'une réponse d'après le moteur. Ne conclut rien si l'exécution est encore en cours."""
+    def settle_from_engine(self, message_id: int, run_id: str | None, hermes: HermesClient | None = None) -> dict | None:
+        """Arrête l'état d'une réponse d'après le moteur. Ne conclut rien si l'exécution est encore en cours.
+
+        Renvoie None si l'état est inconnu (moteur injoignable), sinon
+        ``{"status", "output", "cost"}``. La mission liée à l'exécution est clôturée ici :
+        un seul point de vérité, jamais le flux relayé.
+        """
         if not run_id:
             self.store.settle_message(message_id, "La demande n'a pas pu être transmise.", "failed")
-            return
+            return {"status": "failed", "output": "", "cost": None}
         try:
             status = (hermes or self.hermes).run_status(run_id)
         except HermesError:
-            return
-        state = status.get("status")
+            return None
+        state = str(status.get("status") or "")
+        usage = status.get("usage")
+        if not isinstance(usage, dict):
+            usage = {}
+        raw_cost = usage.get("cost_usd")
+        cost = None
+        if raw_cost is not None:
+            try:
+                cost = float(raw_cost)
+            except (TypeError, ValueError):
+                cost = None
+        output = str(status.get("output") or "")
         if state == "completed":
-            self.store.settle_message(message_id, str(status.get("output") or ""), "done")
+            self.store.settle_message(message_id, output, "done")
         elif state in TERMINAL:
             self.store.settle_message(message_id, "La réponse n'a pas abouti.", "failed")
+        else:
+            return {"status": state, "output": "", "cost": cost}
+        mission = self.store.mission_for_run(run_id)
+        if mission is not None and mission["status"] == "en_cours":
+            final = "terminee" if state == "completed" else ("arretee" if state == "cancelled" else "echouee")
+            reason = None
+            if cost is not None and self.max_mission_usd and cost > self.max_mission_usd:
+                reason = "depassement_plafond"
+                self.store.audit(mission["user_id"], "mission_plafond_depasse",
+                                 f"mission {mission['id']} coût {cost:.4f} USD")
+            self.store.finish_mission(mission["id"], final, output, cost, reason)
+            self.store.audit(mission["user_id"], "mission_fin", f"{mission['id']} {final}")
+        return {"status": state, "output": output, "cost": cost}
 
 
 def make_handler(app: App):
@@ -232,7 +266,9 @@ def make_handler(app: App):
                 user = self._user()
                 if not user:
                     return self._json(401, {"error": "non connecté"})
-                me = {"login": user["login"], "name": user["display_name"]}
+                me = {"login": user["login"], "name": user["display_name"],
+                      "role": user["role"], "admin": user["role"] == "admin",
+                      "mail": app.mailer is not None}
                 if app.bridge_key and user["login"] in app.bridge_logins:
                     me["gona"] = True  # bouton de bascule vers GONA : jamais pour les autres comptes
                 return self._json(200, me)
@@ -240,6 +276,12 @@ def make_handler(app: App):
                 return self._kanban(path, False)
             if path == "/api/conversation":
                 return self._conversation()
+            if path == "/api/missions":
+                return self._missions()
+            if path == "/api/audit":
+                return self._audit()
+            if path == "/api/export":
+                return self._export()
             if path == "/api/engagements":
                 return self._engagements()
             if path == "/api/drafts":
@@ -260,8 +302,12 @@ def make_handler(app: App):
                 return self._kanban(path, True)
             if path == "/api/chat":
                 return self._chat()
+            if path == "/api/missions/stop":
+                return self._mission_stop()
             if path == "/api/drafts/decide":
                 return self._decide()
+            if path == "/api/drafts/send":
+                return self._draft_send()
             if path == "/internal/engagements":
                 return self._internal_record()
             if path == "/internal/drafts":
@@ -417,6 +463,13 @@ def make_handler(app: App):
             if hermes is None:
                 app.store.audit(user["id"], "chat_refusé_sans_agent", user["login"])
                 return self._json(503, {"error": "aucun agent personnel n'est configuré pour ce compte"})
+            # Plafond journalier (24 h glissantes) : refus avant tout appel facturé.
+            if app.max_day_usd:
+                spent = app.store.cost_since(app.now() - 86400)
+                if spent >= app.max_day_usd:
+                    app.store.audit(user["id"], "chat_refusé_plafond", f"{spent:.4f} USD")
+                    return self._json(429, {"error": "plafond de dépense journalier atteint : "
+                                                     "aucune nouvelle mission n'est lancée"})
             with app.chat_lock:
                 conv = app.store.conversation_for(user["id"])
                 if app.store.has_pending(conv["id"]):
@@ -438,7 +491,8 @@ def make_handler(app: App):
                     app.store.audit(user["id"], "chat_échec", str(exc))
                     return self._json(502, {"error": "moteur indisponible"})
                 app.store.set_run_id(answer_id, run_id)
-            app.store.audit(user["id"], "chat", f"message {answer_id}")
+                mission_id = app.store.start_mission(user["id"], conv["id"], run_id, text)
+            app.store.audit(user["id"], "chat", f"message {answer_id} mission {mission_id}")
 
             self._headers(200, "text/event-stream; charset=utf-8", None,
                           {"X-Accel-Buffering": "no"})
@@ -454,7 +508,7 @@ def make_handler(app: App):
                 except OSError:
                     client_alive = False  # le navigateur est parti : on continue de suivre l'exécution
 
-            send({"type": "start", "id": answer_id})
+            send({"type": "start", "id": answer_id, "mission": mission_id})
             try:
                 for event in hermes.events(run_id):
                     kind = event.get("event", "")
@@ -573,11 +627,115 @@ def make_handler(app: App):
             if outcome in ("inconnu", "deja_decide"):
                 return self._json(409, {"error": "brouillon inconnu ou déjà décidé"})
             if outcome == "approuve":
-                # Aucun connecteur d'envoi n'est autorisé à ce stade : le brouillon est prêt, pas envoyé.
-                app.store.set_delivery_note(draft_id, "non envoyé : aucun connecteur autorisé")
+                # L'approbation n'envoie rien : l'envoi est un second geste explicite, vérifié par empreinte.
+                app.store.set_delivery_note(draft_id, "approuvé : prêt à envoyer")
             app.store.audit(user["id"], "brouillon_" + outcome, str(draft_id))
-            self._json(200, {"statut": outcome, "livraison": "non envoyé : aucun connecteur autorisé"
+            self._json(200, {"statut": outcome, "livraison": "approuvé : prêt à envoyer"
                              if outcome == "approuve" else None})
+
+        # --- missions, journal, export, envoi --------------------------------
+        def _missions(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            rows = app.store.missions(user["id"], limit=50)
+            self._json(200, {"missions": [
+                {"id": r["id"], "titre": r["title"], "statut": r["status"],
+                 "debut": r["created_at"], "fin": r["ended_at"], "cout": r["cost_usd"],
+                 "resultat": r["result"], "arret": r["stop_reason"]} for r in rows],
+                "actives": sum(1 for r in rows if r["status"] == "en_cours"),
+                "plafond_mission": app.max_mission_usd, "plafond_jour": app.max_day_usd,
+                "depense_24h": round(app.store.cost_since(app.now() - 86400), 4)})
+
+        def _mission_stop(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            data = self._body()
+            if not data:
+                return self._json(400, {"error": "requête invalide"})
+            try:
+                mission_id = int(data.get("id", 0))
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "identifiant invalide"})
+            code = app.store.request_stop(mission_id, user["id"], is_admin=(user["role"] == "admin"))
+            if code == "inconnu":
+                return self._json(404, {"error": "mission inconnue"})
+            if code == "interdit":
+                app.store.audit(user["id"], "mission_arret_refuse", str(mission_id))
+                return self._json(403, {"error": "cette mission ne vous appartient pas"})
+            if code == "deja_terminee":
+                return self._json(409, {"error": "mission déjà terminée"})
+            mission = app.store.mission(mission_id)
+            hermes = app.hermes_for(user["login"]) or app.hermes
+            stopped = bool(mission and mission["run_id"] and hermes.stop(mission["run_id"]))
+            app.store.audit(user["id"], "mission_arret", f"{mission_id} moteur={stopped}")
+            self._json(200, {"statut": "arret_demande", "moteur": stopped})
+
+        def _audit(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            from urllib.parse import parse_qs, urlsplit
+            query = parse_qs(urlsplit(self.path).query)
+            try:
+                limit = int(query.get("limit", ["200"])[0])
+            except ValueError:
+                limit = 200
+            admin = user["role"] == "admin"
+            rows = app.store.audit_rows(limit, None if admin else user["id"])
+            self._json(200, {"evenements": [
+                {"id": r["id"], "quand": r["ts"], "compte": r["user_id"],
+                 "action": r["action"], "detail": r["detail"]} for r in rows]})
+
+        def _export(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            if user["role"] != "admin":
+                app.store.audit(user["id"], "export_refuse", "rôle membre")
+                return self._json(403, {"error": "export réservé à l'administrateur"})
+            payload = json.dumps(app.store.export_data(None), ensure_ascii=False, default=str).encode("utf-8")
+            app.store.audit(user["id"], "export", f"{len(payload)} octets")
+            stamp = datetime.now(DISPLAY_TZ).strftime("%Y%m%d-%H%M")
+            self._headers(200, "application/json; charset=utf-8", len(payload),
+                          {"Content-Disposition": f'attachment; filename="arpagona-export-{stamp}.json"'})
+            self.wfile.write(payload)
+
+        def _draft_send(self) -> None:
+            user = self._user()
+            if not user:
+                return self._json(401, {"error": "non connecté"})
+            if app.mailer is None:
+                return self._json(503, {"error": "envoi courriel non configuré sur cette instance"})
+            data = self._body()
+            if not data:
+                return self._json(400, {"error": "requête invalide"})
+            try:
+                draft_id = int(data.get("id", 0))
+            except (TypeError, ValueError):
+                return self._json(400, {"error": "identifiant invalide"})
+            # Seul le propriétaire envoie : un admin ne peut pas expédier le brouillon d'un autre compte.
+            code, row = app.store.claim_send(draft_id, user["id"], str(data.get("empreinte", "")), is_admin=False)
+            if code != "ok" or row is None:
+                app.store.audit(user["id"], "envoi_refuse_" + code, str(draft_id))
+                messages = {"inconnu": (404, "brouillon inconnu"), "interdit": (403, "brouillon d'un autre compte"),
+                            "non_approuve": (409, "le brouillon doit être approuvé avant envoi"),
+                            "deja_en_cours": (409, "envoi déjà effectué ou en cours"),
+                            "contenu_modifie": (409, "le contenu a changé depuis l'approbation : relisez-le")}
+                status, message = messages.get(code, (409, "envoi impossible"))
+                return self._json(status, {"error": message})
+            engagement = app.store.engagement(row["engagement_id"])
+            subject = f"ARPAGONA — {engagement['subject']}" if engagement else "Message ARPAGONA"
+            try:
+                message_id = app.mailer.send(row["target"], subject, row["body"])
+            except MailError as exc:
+                app.store.mark_send_failed(draft_id, str(exc))
+                app.store.audit(user["id"], "envoi_echec", f"{draft_id} {exc}")
+                return self._json(502, {"error": f"envoi échoué : {exc}"})
+            app.store.mark_sent(draft_id, message_id)
+            app.store.audit(user["id"], "envoi", f"{draft_id} {message_id}")
+            self._json(200, {"statut": "envoye", "message_id": message_id})
 
         # --- routes internes (outils du plugin) -----------------------------
         def _service_user(self):
@@ -720,7 +878,10 @@ def main() -> None:
                           Path(key_file).read_text(encoding="ascii").strip())
     app = App(Store(db_path), hermes, static_dir, os.environ.get("ARPAGONA_COOKIE_SECURE", "0") == "1",
               session_idle_minutes=int(os.environ.get("ARPAGONA_SESSION_IDLE_MINUTES", "240")),
-              session_daily_hour=int(os.environ.get("ARPAGONA_SESSION_DAILY_HOUR", "4")))
+              session_daily_hour=int(os.environ.get("ARPAGONA_SESSION_DAILY_HOUR", "4")),
+              max_mission_usd=float(os.environ.get("ARPAGONA_MAX_MISSION_USD", "0.50")),
+              max_day_usd=float(os.environ.get("ARPAGONA_MAX_DAY_USD", "5.00")),
+              mailer=Mailer.from_env())
     bridge_file = os.environ.get("ARPAGONA_BRIDGE_KEY_FILE", "")
     if bridge_file and Path(bridge_file).is_file():
         app.bridge_key = Path(bridge_file).read_text().strip().encode("ascii")

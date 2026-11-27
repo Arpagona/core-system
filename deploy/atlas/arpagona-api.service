@@ -18,6 +18,9 @@ Environment=ARPAGONA_HERMES_KEY_FILE=/etc/arpagona-api/hermes_key
 Environment=ARPAGONA_SERVICE_TOKEN_FILE=/etc/arpagona-api/service_token
 Environment=ARPAGONA_KANBAN_TOKEN_FILE=/etc/arpagona-api/kanban_token
 Environment=ARPAGONA_STATIC_DIR=/opt/arpagona/current/apps/mission-control-web
+Environment=ARPAGONA_MAX_MISSION_USD=0.50
+Environment=ARPAGONA_MAX_DAY_USD=5.00
+EnvironmentFile=-/etc/arpagona-api/mail.env
 ExecStart=/usr/bin/python3 -m arpagona_api.server
 Restart=on-failure
 RestartSec=3
