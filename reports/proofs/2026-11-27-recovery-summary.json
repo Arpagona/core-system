@@ -1,0 +1,46 @@
+{
+  "passed": true,
+  "restore_seconds": 220.106,
+  "data_match": true,
+  "memory_match": true,
+  "bank_count": 4,
+  "memory_units": 69,
+  "documents": 22,
+  "api_rows": {
+    "audit": 1496,
+    "conversations": 3,
+    "drafts": 2,
+    "engagements": 1,
+    "messages": 29,
+    "missions": 0,
+    "users": 4
+  },
+  "kanban_tasks": 26,
+  "services": {
+    "http": {
+      "anonymous": 401,
+      "api": 200,
+      "https": 200,
+      "memory": 200
+    },
+    "physical_network_present": false,
+    "units": {
+      "arpagona-api.service": "active",
+      "arpagona-tls.service": "active",
+      "hermes-arpagona-gateway.service": "active",
+      "hindsight-arpagona.service": "active",
+      "hindsight-gate.service": "active"
+    }
+  },
+  "vm_states_read_back": {
+    "100": "status: running",
+    "101": "status: stopped",
+    "102": "status: stopped",
+    "103": "status: stopped"
+  },
+  "archive_sha256": "423d618c0112509473aca507a4c19987fe7f1e63eb75eb9a3b01e92e020f934d",
+  "operator_code_sha256": {
+    "restore_vm_proof.py": "2f1331d5d37368abaf7dc13bd8c6312ad841f038cf8a9af2e0b479b1f7d4b1f3",
+    "recovery_postgres.py": "9477d535ab3c40bd80155ebf4c0cf5f0b32aa48a50646673a2f48eeefda5ba45"
+  }
+}
